@@ -1,0 +1,33 @@
+{
+  "productName": "Grant Keeper",
+  "version": "0.1.0",
+  "identifier": "com.embertechlogic.grantkeeper",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev:prepare",
+    "beforeBuildCommand": "npm --prefix .. run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Grant Keeper",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/your-org/grant-keeper/releases/latest/download/latest.json"
+      ]
+    },
+    "store": {},
+    "shell": {
+      "open": true
+    }
+  }
+}

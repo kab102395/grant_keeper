@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+src-tauri/target/
+*.local
+*.log
+*.zip
+.tauri/
+.DS_Store
+tauri-dev.log
+src-tauri/live-sync-output.log
+lao-app-e6f57-firebase-adminsdk-wyjcq-a4fcb9800a.json
