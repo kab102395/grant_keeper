@@ -1,0 +1,12 @@
+{
+  "name": "grant-keeper-docx-sidecar",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "scripts": {
+    "start": "node worker.mjs"
+  },
+  "dependencies": {
+    "docx": "^8.5.0"
+  }
+}
