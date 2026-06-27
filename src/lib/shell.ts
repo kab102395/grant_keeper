@@ -53,10 +53,13 @@ export type DiscoveryFilters = {
 export type SetupForm = {
   mode: "create_account" | "sign_in" | "join_workspace";
   organization_name: string;
+  remember_organization_name: boolean;
   workspace_code: string;
   invite_token: string;
   email: string;
+  remember_email: boolean;
   password: string;
+  remember_password: boolean;
 };
 
 export const SURFACES: Array<{ id: Surface; label: string; description: string }> = [
@@ -72,10 +75,13 @@ export const SURFACES: Array<{ id: Surface; label: string; description: string }
 export const EMPTY_SETUP: SetupForm = {
   mode: "create_account",
   organization_name: "",
+  remember_organization_name: true,
   workspace_code: "",
   invite_token: "",
   email: "",
+  remember_email: true,
   password: "",
+  remember_password: false,
 };
 
 export const DEFAULT_DISCOVERY_FILTERS: DiscoveryFilters = {

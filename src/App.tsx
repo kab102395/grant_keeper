@@ -138,6 +138,12 @@ export default function App() {
       : data.setupForm.mode === "sign_in"
         ? Boolean(data.setupForm.workspace_code.trim())
         : Boolean(data.setupForm.invite_token.trim()));
+  const canSubmitGoogleSetup =
+    data.setupForm.mode === "create_account"
+      ? Boolean(data.setupForm.organization_name.trim())
+      : data.setupForm.mode === "sign_in"
+        ? Boolean(data.setupForm.workspace_code.trim())
+        : Boolean(data.setupForm.invite_token.trim());
   const aiSettingsRequired =
     data.config?.draft_generation_preference === "ai" &&
     !data.config?.anthropic_api_key?.trim();
@@ -244,12 +250,16 @@ export default function App() {
               setupForm={data.setupForm}
               setSetupForm={data.setSetupForm}
               saveSetup={data.saveSetup}
+              saveSetupWithGoogle={data.saveSetupWithGoogle}
               requestPasswordReset={data.requestPasswordReset}
               useDevProfile={data.useDevProfile}
               canSaveSetup={canSubmitSetup}
+              canSaveSetupWithGoogle={canSubmitGoogleSetup}
               canStartDevProfile={true}
               autosaveStatus={data.setupAutosaveStatus}
               autosaveAt={data.setupAutosavedAt}
+              googleSignInEnabled={Boolean(data.config?.google_oauth_client_id?.trim())}
+              googleAuthStatus={data.googleAuthStatus}
               setupSupportStatus={data.setupSupportStatus}
               setupSupportMessage={data.setupSupportMessage}
             />

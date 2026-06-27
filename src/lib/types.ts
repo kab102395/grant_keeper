@@ -2,6 +2,7 @@ export type LocalConfig = {
   firebase_rtdb_url: string | null;
   firebase_web_api_key: string | null;
   firebase_auth_domain: string | null;
+  google_oauth_client_id: string | null;
   anthropic_api_key: string | null;
   background_refresh_interval_ms: number | null;
   draft_generation_preference: "local_scaffold" | "ai";
@@ -54,6 +55,7 @@ export type ConfigUpdate = {
   firebase_rtdb_url?: string | null;
   firebase_web_api_key?: string | null;
   firebase_auth_domain?: string | null;
+  google_oauth_client_id?: string | null;
   anthropic_api_key?: string | null;
   background_refresh_interval_ms?: number | null;
   draft_generation_preference?: "local_scaffold" | "ai" | null;
@@ -93,6 +95,19 @@ export type WorkspaceJoinRequest = {
   email: string;
   password: string;
   workspace_code?: string | null;
+  invite_token?: string | null;
+};
+
+export type GoogleWorkspaceCreateRequest = {
+  organization_name: string;
+  workspace_code?: string | null;
+};
+
+export type GoogleWorkspaceSignInRequest = {
+  workspace_code?: string | null;
+};
+
+export type GoogleWorkspaceJoinRequest = {
   invite_token?: string | null;
 };
 

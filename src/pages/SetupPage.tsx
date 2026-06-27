@@ -5,24 +5,32 @@ export function SetupPage({
   setupForm,
   setSetupForm,
   saveSetup,
+  saveSetupWithGoogle,
   requestPasswordReset,
   useDevProfile,
   canSaveSetup,
+  canSaveSetupWithGoogle,
   canStartDevProfile,
   autosaveStatus,
   autosaveAt,
+  googleSignInEnabled,
+  googleAuthStatus,
   setupSupportStatus,
   setupSupportMessage,
 }: {
   setupForm: SetupForm;
   setSetupForm: Dispatch<SetStateAction<SetupForm>>;
   saveSetup: () => Promise<void>;
+  saveSetupWithGoogle: () => Promise<void>;
   requestPasswordReset: () => Promise<void>;
   useDevProfile: () => Promise<void>;
   canSaveSetup: boolean;
+  canSaveSetupWithGoogle: boolean;
   canStartDevProfile: boolean;
   autosaveStatus: "idle" | "saving" | "saved" | "error";
   autosaveAt: string | null;
+  googleSignInEnabled: boolean;
+  googleAuthStatus: "idle" | "saving" | "saved" | "error";
   setupSupportStatus: "idle" | "saving" | "saved" | "error";
   setupSupportMessage: string | null;
 }) {
@@ -84,6 +92,20 @@ export function SetupPage({
               onChange={(event) => setSetupForm({ ...setupForm, organization_name: event.target.value })}
               placeholder="Community Action Network"
             />
+            <span className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={setupForm.remember_organization_name}
+                onChange={(event) =>
+                  setSetupForm({
+                    ...setupForm,
+                    remember_organization_name: event.target.checked,
+                    organization_name: event.target.checked ? setupForm.organization_name : "",
+                  })
+                }
+              />
+              Remember organization name on this device
+            </span>
           </label>
         ) : null}
         <label>
@@ -98,16 +120,48 @@ export function SetupPage({
             onChange={(event) => setSetupForm({ ...setupForm, email: event.target.value })}
             placeholder="admin@example.org"
           />
+          <span className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={setupForm.remember_email}
+              onChange={(event) =>
+                setSetupForm({
+                  ...setupForm,
+                  remember_email: event.target.checked,
+                  email: event.target.checked ? setupForm.email : "",
+                })
+              }
+            />
+            Remember email on this device
+          </span>
         </label>
         <label>
           Password
-          <span className="field-hint">Stored only for this sign-in or account creation attempt</span>
+          <span className="field-hint">
+            {setupForm.remember_password
+              ? "Stored locally on this device so this setup screen reopens with the saved password"
+              : "Stored only for this sign-in or account creation attempt"}
+          </span>
           <input
             type="password"
             value={setupForm.password}
             onChange={(event) => setSetupForm({ ...setupForm, password: event.target.value })}
             placeholder="Minimum Firebase password"
           />
+          <span className="checkbox-row">
+            <input
+              type="checkbox"
+              checked={setupForm.remember_password}
+              onChange={(event) =>
+                setSetupForm({
+                  ...setupForm,
+                  remember_password: event.target.checked,
+                  password: event.target.checked ? setupForm.password : "",
+                })
+              }
+            />
+            Remember password on this device
+          </span>
         </label>
         {setupForm.mode !== "join_workspace" ? (
           <label>
@@ -137,6 +191,16 @@ export function SetupPage({
         <button type="button" className="primary" onClick={() => void saveSetup()} disabled={!canSaveSetup}>
           {submitLabel}
         </button>
+        {googleSignInEnabled ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void saveSetupWithGoogle()}
+            disabled={!canSaveSetupWithGoogle || googleAuthStatus === "saving"}
+          >
+            {googleAuthStatus === "saving" ? "Opening Google..." : "Continue with Google"}
+          </button>
+        ) : null}
         {setupForm.mode !== "create_account" ? (
           <button
             type="button"
@@ -163,6 +227,11 @@ export function SetupPage({
       <p className="field-hint">
         Anthropic key and AI draft mode live in organization settings after sign-in so onboarding stays focused on account access.
       </p>
+      {googleSignInEnabled ? (
+        <p className="field-hint">
+          Google sign-in opens the system browser, returns to Grant Keeper, and uses the Google account email as the workspace login.
+        </p>
+      ) : null}
       {setupSupportMessage ? (
         <p className="field-hint">
           {setupSupportMessage}

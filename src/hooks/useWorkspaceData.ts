@@ -36,7 +36,10 @@ import type { Dispatch, SetStateAction } from "react";
 function syncSetupFormFromState(current: SetupForm, nextConfig: LocalConfig, organizationName?: string | null): SetupForm {
   return {
     ...current,
-    organization_name: organizationName?.trim() ? organizationName : current.organization_name,
+    organization_name:
+      current.remember_organization_name && organizationName?.trim()
+        ? organizationName
+        : current.organization_name,
     workspace_code: nextConfig.organization_uid ?? current.workspace_code,
     invite_token: current.invite_token,
   };
@@ -64,10 +67,17 @@ function loadSetupFormDraft(): SetupForm {
           ? parsed.mode
           : "create_account",
       organization_name: typeof parsed.organization_name === "string" ? parsed.organization_name : "",
+      remember_organization_name:
+        typeof parsed.remember_organization_name === "boolean" ? parsed.remember_organization_name : true,
       workspace_code: typeof parsed.workspace_code === "string" ? parsed.workspace_code : "",
       invite_token: typeof parsed.invite_token === "string" ? parsed.invite_token : "",
       email: typeof parsed.email === "string" ? parsed.email : "",
-      password: "",
+      remember_email: typeof parsed.remember_email === "boolean" ? parsed.remember_email : true,
+      password:
+        typeof parsed.remember_password === "boolean" && parsed.remember_password && typeof parsed.password === "string"
+          ? parsed.password
+          : "",
+      remember_password: typeof parsed.remember_password === "boolean" ? parsed.remember_password : false,
     };
   } catch {
     return EMPTY_SETUP;
@@ -77,10 +87,14 @@ function loadSetupFormDraft(): SetupForm {
 function serializeSetupFormDraft(form: SetupForm) {
   return JSON.stringify({
     mode: form.mode,
-    organization_name: form.organization_name,
+    organization_name: form.remember_organization_name ? form.organization_name : "",
+    remember_organization_name: form.remember_organization_name,
     workspace_code: form.workspace_code,
     invite_token: form.invite_token,
-    email: form.email,
+    email: form.remember_email ? form.email : "",
+    remember_email: form.remember_email,
+    password: form.remember_password ? form.password : "",
+    remember_password: form.remember_password,
   });
 }
 
@@ -207,6 +221,7 @@ export type WorkspaceDataResult = {
   setupAutosavedAt: string | null;
   setupSupportStatus: "idle" | "saving" | "saved" | "error";
   setupSupportMessage: string | null;
+  googleAuthStatus: "idle" | "saving" | "saved" | "error";
   organizationAutosaveStatus: "idle" | "saving" | "saved" | "error";
   organizationAutosavedAt: string | null;
   workspaceInvite: WorkspaceInviteRecord | null;
@@ -225,6 +240,7 @@ export type WorkspaceDataResult = {
   setSelectedGrant: Dispatch<SetStateAction<GrantRecord | null>>;
   setSelectedDraft: Dispatch<SetStateAction<DraftRecord | null>>;
   saveSetup: () => Promise<void>;
+  saveSetupWithGoogle: () => Promise<void>;
   requestPasswordReset: () => Promise<void>;
   useDevProfile: () => Promise<void>;
   clearSessionAndReload: () => Promise<void>;
@@ -290,6 +306,7 @@ export function useWorkspaceData({
   const [setupValidation, setSetupValidation] = useState<SetupValidation | null>(null);
   const [setupSupportStatus, setSetupSupportStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [setupSupportMessage, setSetupSupportMessage] = useState<string | null>(null);
+  const [googleAuthStatus, setGoogleAuthStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [discoveryFilters, setDiscoveryFilters] = useState<DiscoveryFilters>({
     query: "",
     status: "open",
@@ -793,6 +810,53 @@ export function useWorkspaceData({
       await loadBootstrapState(setupComplete ? createWorkspaceLocation("dashboard") : createWorkspaceLocation("setup"));
     } catch (err) {
       await handleWorkspaceError(err, { fallbackToSetup: true });
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function saveSetupWithGoogle() {
+    try {
+      setRefreshing(true);
+      clearError();
+      setSetupSupportStatus("idle");
+      setSetupSupportMessage(null);
+      setGoogleAuthStatus("saving");
+
+      if (setupForm.mode === "create_account") {
+        if (!setupForm.organization_name.trim()) {
+          throw new Error("Enter an organization name before continuing.");
+        }
+        await api.createWorkspaceAccountWithGoogle({
+          organization_name: setupForm.organization_name.trim(),
+          workspace_code: setupForm.workspace_code.trim() || null,
+        });
+      } else if (setupForm.mode === "sign_in") {
+        if (!setupForm.workspace_code.trim()) {
+          throw new Error("Enter a workspace code before continuing.");
+        }
+        await api.signInToWorkspaceWithGoogle({
+          workspace_code: setupForm.workspace_code.trim(),
+        });
+      } else {
+        if (!setupForm.invite_token.trim()) {
+          throw new Error("Enter an invite token before continuing.");
+        }
+        await api.joinWorkspaceWithGoogle({
+          invite_token: setupForm.invite_token.trim(),
+        });
+      }
+
+      const nextConfig = await api.updateLocalConfig({
+        setup_complete: true,
+      });
+      setConfig(nextConfig);
+      setSetupForm((current) => ({ ...current, password: "" }));
+      setGoogleAuthStatus("saved");
+      await loadBootstrapState(createWorkspaceLocation("dashboard"));
+    } catch (err) {
+      setGoogleAuthStatus("error");
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -1333,6 +1397,7 @@ export function useWorkspaceData({
     setupAutosavedAt: setupAutosave.savedAt,
     setupSupportStatus,
     setupSupportMessage,
+    googleAuthStatus,
     organizationAutosaveStatus: organizationAutosave.status,
     organizationAutosavedAt: organizationAutosave.savedAt,
     workspaceInvite,
@@ -1349,6 +1414,7 @@ export function useWorkspaceData({
     setSelectedGrant,
     setSelectedDraft,
     saveSetup,
+    saveSetupWithGoogle,
     requestPasswordReset,
     useDevProfile,
     clearSessionAndReload,

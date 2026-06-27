@@ -6,6 +6,9 @@ import type {
   EmailPasswordSignIn,
   EmailPasswordSignUp,
   FirebaseSession,
+  GoogleWorkspaceCreateRequest,
+  GoogleWorkspaceJoinRequest,
+  GoogleWorkspaceSignInRequest,
   GrantIngestReport,
   GrantRecord,
   GrantSourceHealthRecord,
@@ -31,11 +34,17 @@ export const api = {
   startDevProfile: () => invoke<FirebaseSession>("start_dev_profile"),
   createWorkspaceAccount: (request: WorkspaceCreateRequest) =>
     invoke<FirebaseSession>("create_workspace_account", { request }),
+  createWorkspaceAccountWithGoogle: (request: GoogleWorkspaceCreateRequest) =>
+    invoke<FirebaseSession>("create_workspace_account_with_google", { request }),
   createWorkspaceInvite: () => invoke<WorkspaceInviteRecord>("create_workspace_invite"),
   signInToWorkspace: (request: WorkspaceJoinRequest) =>
     invoke<FirebaseSession>("sign_in_to_workspace", { request }),
+  signInToWorkspaceWithGoogle: (request: GoogleWorkspaceSignInRequest) =>
+    invoke<FirebaseSession>("sign_in_to_workspace_with_google", { request }),
   signUpToJoinWorkspace: (request: WorkspaceJoinRequest) =>
     invoke<FirebaseSession>("sign_up_to_join_workspace", { request }),
+  joinWorkspaceWithGoogle: (request: GoogleWorkspaceJoinRequest) =>
+    invoke<FirebaseSession>("join_workspace_with_google", { request }),
   refreshSession: () => invoke<FirebaseSession | null>("refresh_session"),
   sendPasswordResetEmail: (email: string) => invoke<void>("send_password_reset_email", { email }),
   validateAnthropicApiKey: (apiKey: string) => invoke<void>("validate_anthropic_api_key", { apiKey }),
