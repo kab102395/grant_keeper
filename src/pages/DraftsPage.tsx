@@ -80,6 +80,14 @@ export function DraftsPage({
               <span>Mode: {draftGenerationLabel(selectedDraft.generation_mode)}</span>
               <span>Updated: {formatTimestamp(selectedDraft.updated_at)}</span>
               <span>{config?.last_sync_at ? `Catalog synced ${formatTimestamp(config.last_sync_at)}` : "No live sync recorded"}</span>
+              <span>
+                Next draft mode:{" "}
+                {config?.draft_generation_preference === "ai" && config?.anthropic_api_key
+                  ? "Anthropic AI"
+                  : config?.draft_generation_preference === "ai"
+                    ? "AI requested but key missing"
+                    : "Local scaffold"}
+              </span>
             </div>
           ) : (
             <p className="muted">Choose a draft from the rail to open the editor.</p>

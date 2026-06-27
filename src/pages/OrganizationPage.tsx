@@ -65,6 +65,12 @@ export function OrganizationPage({
   orgUid,
   config,
   onSave,
+  aiSettingsDraft,
+  setAiSettingsDraft,
+  onValidateAiSettings,
+  onSaveAiSettings,
+  aiSettingsStatus,
+  aiSettingsMessage,
   autosaveStatus,
   autosaveAt,
 }: {
@@ -76,6 +82,14 @@ export function OrganizationPage({
   orgUid: string | null;
   config: LocalConfig | null;
   onSave: () => Promise<void>;
+  aiSettingsDraft: { anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" };
+  setAiSettingsDraft: Dispatch<
+    SetStateAction<{ anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" }>
+  >;
+  onValidateAiSettings: () => Promise<void>;
+  onSaveAiSettings: () => Promise<void>;
+  aiSettingsStatus: "idle" | "validating" | "saving" | "saved" | "error";
+  aiSettingsMessage: string | null;
   autosaveStatus: "idle" | "saving" | "saved" | "error";
   autosaveAt: string | null;
 }) {
@@ -151,6 +165,18 @@ export function OrganizationPage({
             <p className="field-value">{autosaveStatus === "saved" && autosaveAt ? `Saved ${formatTimestamp(autosaveAt)}` : autosaveStatus}</p>
             <p className="muted">Profile changes persist automatically while you type.</p>
           </div>
+
+          <div className="org-summary-card">
+            <p className="eyebrow">AI drafting</p>
+            <p className="field-value">
+              {config?.draft_generation_preference === "ai" && config?.anthropic_api_key ? "AI mode configured" : "Scaffold first"}
+            </p>
+            <p className="muted">
+              {config?.anthropic_api_key
+                ? "Anthropic key stored for this desktop workspace."
+                : "No Anthropic key saved yet."}
+            </p>
+          </div>
         </aside>
 
         <section className="panel-block org-form-panel">
@@ -222,6 +248,87 @@ export function OrganizationPage({
               Save organization
             </button>
           </div>
+
+          <section className="panel-block panel-block-soft ai-settings-panel">
+            <div className="detail-header">
+              <div>
+                <p className="eyebrow">AI settings</p>
+                <h4>Anthropic drafting controls</h4>
+              </div>
+              <span className="status-pill">
+                {aiSettingsDraft.draftPreference === "ai" ? "AI mode" : "Scaffold mode"}
+              </span>
+            </div>
+
+            <div className="form-grid">
+              <label className="grid-span-2">
+                Anthropic API key
+                <span className="field-hint">
+                  Save a workspace-local key here so the drafting flow can use Anthropic without operator help.
+                </span>
+                <input
+                  type="password"
+                  value={aiSettingsDraft.anthropicApiKey}
+                  onChange={(event) =>
+                    setAiSettingsDraft((current) => ({ ...current, anthropicApiKey: event.target.value }))
+                  }
+                  placeholder="sk-ant-..."
+                />
+              </label>
+
+              <label>
+                Draft generation mode
+                <select
+                  value={aiSettingsDraft.draftPreference}
+                  onChange={(event) =>
+                    setAiSettingsDraft((current) => ({
+                      ...current,
+                      draftPreference: event.target.value as "local_scaffold" | "ai",
+                    }))
+                  }
+                >
+                  <option value="local_scaffold">Local scaffold</option>
+                  <option value="ai">AI draft</option>
+                </select>
+              </label>
+
+              <div className="panel-card">
+                <p className="eyebrow">Current status</p>
+                <p className="field-value">
+                  {config?.anthropic_api_key ? "Key saved" : "No saved key"}
+                </p>
+                <p className="muted">
+                  {aiSettingsDraft.draftPreference === "ai"
+                    ? "New drafts will attempt Anthropic generation when the key validates."
+                    : "New drafts will stay scaffold-first even if a key is saved."}
+                </p>
+              </div>
+            </div>
+
+            <div className="surface-actions org-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void onValidateAiSettings()}
+                disabled={!aiSettingsDraft.anthropicApiKey.trim() || aiSettingsStatus === "validating"}
+              >
+                {aiSettingsStatus === "validating" ? "Validating..." : "Validate key"}
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void onSaveAiSettings()}
+                disabled={aiSettingsStatus === "saving"}
+              >
+                {aiSettingsStatus === "saving" ? "Saving..." : "Save AI settings"}
+              </button>
+            </div>
+
+            <div className="info-row">
+              <span>Status: {aiSettingsStatus}</span>
+              <span>{aiSettingsMessage ?? "Validate or save the current AI drafting settings."}</span>
+            </div>
+          </section>
 
           <div className="org-summary-grid">
             <div className="panel-card">

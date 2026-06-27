@@ -39,6 +39,8 @@ export function GrantDiscoveryPage({
   onSelectGrant,
   onToggleWatchlist,
   onCreateDraft,
+  aiSettingsRequired,
+  onOpenAiSettings,
   canWriteOrg,
   writeDisabledReason,
 }: {
@@ -51,6 +53,8 @@ export function GrantDiscoveryPage({
   onSelectGrant: (grant: GrantRecord) => Promise<void>;
   onToggleWatchlist: (grant: GrantRecord) => Promise<void>;
   onCreateDraft: (grant: GrantRecord) => Promise<void>;
+  aiSettingsRequired: boolean;
+  onOpenAiSettings: () => void;
   canWriteOrg: boolean;
   writeDisabledReason: string;
 }) {
@@ -115,6 +119,7 @@ export function GrantDiscoveryPage({
       <div className="info-row">
         <span>Catalog source: RTDB</span>
         <span>{config?.last_sync_at ? `Synced ${formatTimestamp(config.last_sync_at)}` : "No live sync recorded"}</span>
+        {aiSettingsRequired ? <span>AI mode is selected but not configured. Configure it from org settings.</span> : null}
       </div>
 
       <section className="panel-block discovery-toolbar">
@@ -423,8 +428,13 @@ export function GrantDiscoveryPage({
                           disabled={!canWriteOrg}
                           title={!canWriteOrg ? writeDisabledReason : undefined}
                         >
-                          Draft
+                          {aiSettingsRequired ? "Scaffold" : "Draft"}
                         </button>
+                        {aiSettingsRequired ? (
+                          <button type="button" className="ghost" onClick={onOpenAiSettings}>
+                            AI settings
+                          </button>
+                        ) : null}
                       </td>
                     </tr>
                   );

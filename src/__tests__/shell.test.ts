@@ -758,7 +758,7 @@ describe("summarizeSetup", () => {
   it("lists missing fields when blocked", () => {
     const result = summarizeSetup({
       ready: false,
-      missing_fields: ["firebase_rtdb_url", "anthropic_api_key"],
+      missing_fields: ["firebase_rtdb_url", "organization_uid"],
       signed_in: false,
       session_mode: "none",
       workspace_ready: false,
@@ -766,7 +766,7 @@ describe("summarizeSetup", () => {
     });
     expect(result.ready).toBe("blocked");
     expect(result.missing).toContain("firebase_rtdb_url");
-    expect(result.missing).toContain("anthropic_api_key");
+    expect(result.missing).toContain("organization_uid");
   });
 
   it("shows dev_profile mode label", () => {

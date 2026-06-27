@@ -16,6 +16,8 @@ export function GrantDetailView({
   watchlistedPortalIds,
   onToggleWatchlist,
   onCreateDraft,
+  aiSettingsRequired,
+  onOpenAiSettings,
   canWrite,
   writeDisabledReason,
   layout = "embedded",
@@ -24,6 +26,8 @@ export function GrantDetailView({
   watchlistedPortalIds: Set<string>;
   onToggleWatchlist: (grant: GrantRecord) => Promise<void>;
   onCreateDraft: (grant: GrantRecord) => Promise<void>;
+  aiSettingsRequired: boolean;
+  onOpenAiSettings: () => void;
   canWrite: boolean;
   writeDisabledReason: string;
   layout?: "embedded" | "page";
@@ -247,10 +251,20 @@ export function GrantDetailView({
           disabled={!canWrite}
           title={!canWrite ? writeDisabledReason : undefined}
         >
-          Create draft
+          {aiSettingsRequired ? "Create scaffold draft" : "Create draft"}
         </button>
+        {aiSettingsRequired ? (
+          <button type="button" className="ghost" onClick={onOpenAiSettings}>
+            Configure AI
+          </button>
+        ) : null}
       </div>
       {!canWrite ? <p className="muted detail-action-note">{writeDisabledReason}</p> : null}
+      {canWrite && aiSettingsRequired ? (
+        <p className="muted detail-action-note">
+          AI mode is selected, but no Anthropic key is configured yet. Open organization settings to finish AI drafting setup.
+        </p>
+      ) : null}
     </section>
   );
 

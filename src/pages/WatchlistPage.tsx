@@ -19,6 +19,8 @@ export function WatchlistPage({
   onRemove,
   onViewGrant,
   onCreateDraft,
+  aiSettingsRequired,
+  onOpenAiSettings,
   canWriteOrg,
   writeDisabledReason,
   config,
@@ -29,6 +31,8 @@ export function WatchlistPage({
   onRemove: (grant: Pick<GrantRecord, "portal_id">) => Promise<void>;
   onViewGrant: (portalId: string) => Promise<void>;
   onCreateDraft: (grant: GrantRecord) => Promise<void>;
+  aiSettingsRequired: boolean;
+  onOpenAiSettings: () => void;
   canWriteOrg: boolean;
   writeDisabledReason: string;
 }) {
@@ -42,6 +46,7 @@ export function WatchlistPage({
       <div className="info-row">
         <span>Catalog source: RTDB</span>
         <span>{config?.last_sync_at ? `Synced ${formatTimestamp(config.last_sync_at)}` : "No live sync recorded"}</span>
+        {aiSettingsRequired ? <span>AI mode is selected but not configured. Open org settings to enable it.</span> : null}
       </div>
 
       <div className="watchlist-table-shell">
@@ -113,8 +118,13 @@ export function WatchlistPage({
                         disabled={!grant || !canWriteOrg}
                         title={!canWriteOrg ? writeDisabledReason : grant ? undefined : "Grant metadata not loaded yet"}
                       >
-                        Draft
+                        {aiSettingsRequired ? "Scaffold" : "Draft"}
                       </button>
+                      {aiSettingsRequired ? (
+                        <button type="button" className="ghost" onClick={onOpenAiSettings}>
+                          AI settings
+                        </button>
+                      ) : null}
                       <button type="button" className="secondary" onClick={() => void onRemove({ portal_id: entry.portal_id })}>
                         Remove
                       </button>

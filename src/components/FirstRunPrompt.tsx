@@ -6,12 +6,16 @@ export function FirstRunPrompt({
   organization,
   hasWatchlist,
   hasDrafts,
+  aiSettingsRequired,
   onNavigate,
+  onOpenAiSettings,
 }: {
   organization: OrganizationRecord | null;
   hasWatchlist: boolean;
   hasDrafts: boolean;
+  aiSettingsRequired: boolean;
   onNavigate: (surface: Surface) => void;
+  onOpenAiSettings: () => void;
 }) {
   const orgComplete = orgCompletenessScore(organization) === 100;
 
@@ -56,11 +60,22 @@ export function FirstRunPrompt({
           <span className={hasDrafts ? "first-run-step-number done" : "first-run-step-number"}>3</span>
           <div>
             <h4>Start your first draft</h4>
-            <p>Generate a draft from a grant and continue editing with the grant context visible.</p>
+            <p>
+              {aiSettingsRequired
+                ? "AI mode is selected, but the organization still needs an Anthropic API key. You can keep moving with a scaffold draft or open AI settings first."
+                : "Generate a draft from a grant and continue editing with the grant context visible."}
+            </p>
           </div>
-          <button type="button" className="primary" onClick={() => onNavigate("drafts")}>
-            Open drafts
-          </button>
+          <div className="surface-actions">
+            <button type="button" className="primary" onClick={() => onNavigate("drafts")}>
+              {aiSettingsRequired ? "Open scaffold drafts" : "Open drafts"}
+            </button>
+            {aiSettingsRequired ? (
+              <button type="button" className="secondary" onClick={onOpenAiSettings}>
+                AI settings
+              </button>
+            ) : null}
+          </div>
         </article>
       </div>
     </section>

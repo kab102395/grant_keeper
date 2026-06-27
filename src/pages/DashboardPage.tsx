@@ -35,7 +35,9 @@ export function DashboardPage({
   draftCount,
   selectedGrant,
   selectedDraft,
+  aiSettingsRequired,
   onOpenSurface,
+  onOpenAiSettings,
   }: {
   snapshot: AppSnapshot | null;
   config: LocalConfig | null;
@@ -48,10 +50,12 @@ export function DashboardPage({
   draftCount: number;
   selectedGrant: GrantRecord | null;
   selectedDraft: DraftRecord | null;
+  aiSettingsRequired: boolean;
   onOpenSurface: (
     surface: Surface,
     overrides?: { grantPortalId?: string | null; draftId?: string | null },
   ) => void;
+  onOpenAiSettings: () => void;
 }) {
   const workspaceStatus = useMemo(() => workspaceStatusLabel(snapshot, config), [config, snapshot]);
 
@@ -163,6 +167,9 @@ export function DashboardPage({
                 ? `${selectedGrant.agency_dept ?? "Unknown agency"} - ${selectedGrant.deadline_is_ongoing ? "Ongoing" : selectedGrant.application_deadline ?? "No deadline"}`
                 : "Open discovery or a grant detail page to resume from the selected opportunity."}
             </p>
+            {selectedGrant && aiSettingsRequired ? (
+              <p className="muted">AI mode is selected, but this workspace has no Anthropic API key yet. Start with a scaffold draft or open AI settings.</p>
+            ) : null}
             <div className="surface-actions">
               <button
                 type="button"
@@ -172,6 +179,19 @@ export function DashboardPage({
               >
                 Resume grant
               </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => onOpenSurface("drafts", { grantPortalId: selectedGrant?.portal_id ?? null })}
+                disabled={!selectedGrant}
+              >
+                {aiSettingsRequired ? "Create scaffold draft" : "Create draft"}
+              </button>
+              {aiSettingsRequired ? (
+                <button type="button" className="secondary" onClick={onOpenAiSettings}>
+                  AI settings
+                </button>
+              ) : null}
               <button type="button" className="secondary" onClick={() => onOpenSurface("discover")}>
                 Open discovery
               </button>

@@ -9,6 +9,8 @@ export function GrantDetailPage({
   onBack,
   onToggleWatchlist,
   onCreateDraft,
+  aiSettingsRequired,
+  onOpenAiSettings,
   canWriteOrg,
   writeDisabledReason,
 }: {
@@ -18,6 +20,8 @@ export function GrantDetailPage({
   onBack: () => void;
   onToggleWatchlist: (grant: GrantRecord) => Promise<void>;
   onCreateDraft: (grant: GrantRecord) => Promise<void>;
+  aiSettingsRequired: boolean;
+  onOpenAiSettings: () => void;
   canWriteOrg: boolean;
   writeDisabledReason: string;
 }) {
@@ -31,6 +35,15 @@ export function GrantDetailPage({
       <div className="info-row">
         <span>Catalog source: RTDB</span>
         <span>{config?.last_sync_at ? `Synced ${formatTimestamp(config.last_sync_at)}` : "No live sync recorded"}</span>
+        <span>
+          Draft mode:{" "}
+          {config?.draft_generation_preference === "ai" && config?.anthropic_api_key
+            ? "AI draft enabled"
+            : config?.draft_generation_preference === "ai"
+              ? "AI preferred but key missing"
+              : "Local scaffold"}
+        </span>
+        {aiSettingsRequired ? <span>Open org settings to finish AI drafting setup</span> : null}
       </div>
 
       <div className="surface-actions">
@@ -44,6 +57,8 @@ export function GrantDetailPage({
         watchlistedPortalIds={watchlistedPortalIds}
         onToggleWatchlist={onToggleWatchlist}
         onCreateDraft={onCreateDraft}
+        aiSettingsRequired={aiSettingsRequired}
+        onOpenAiSettings={onOpenAiSettings}
         canWrite={canWriteOrg}
         writeDisabledReason={writeDisabledReason}
         layout="page"
