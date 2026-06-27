@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum FirebaseError {
     #[error("missing firebase api key")]
     MissingApiKey,
+    #[error("missing google id token")]
+    MissingGoogleIdToken,
     #[error("missing refresh token")]
     MissingRefreshToken,
     #[error("firebase auth request failed: {0}")]
@@ -51,6 +53,18 @@ struct PasswordResetRequest<'a> {
     #[serde(rename = "requestType")]
     request_type: &'static str,
     email: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct GoogleIdpRequest<'a> {
+    #[serde(rename = "postBody")]
+    post_body: String,
+    #[serde(rename = "requestUri")]
+    request_uri: &'a str,
+    #[serde(rename = "returnSecureToken")]
+    return_secure_token: bool,
+    #[serde(rename = "returnIdpCredential")]
+    return_idp_credential: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -134,6 +148,64 @@ impl FirebaseAuthClient {
         }
 
         Ok(())
+    }
+
+    pub async fn sign_in_with_google_id_token(
+        &self,
+        google_id_token: &str,
+        google_access_token: Option<&str>,
+    ) -> Result<FirebaseSession, FirebaseError> {
+        if self.api_key.trim().is_empty() {
+            return Err(FirebaseError::MissingApiKey);
+        }
+        if google_id_token.trim().is_empty() {
+            return Err(FirebaseError::MissingGoogleIdToken);
+        }
+
+        let url = format!(
+            "{}/accounts:signInWithIdp?key={}",
+            self.sign_in_base_url, self.api_key
+        );
+        let mut post_body = format!(
+            "id_token={}&providerId=google.com",
+            urlencoding::encode(google_id_token)
+        );
+        if let Some(access_token) = google_access_token
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            post_body.push_str("&access_token=");
+            post_body.push_str(&urlencoding::encode(access_token));
+        }
+
+        let response = self
+            .http
+            .post(url)
+            .json(&GoogleIdpRequest {
+                post_body,
+                request_uri: "http://localhost",
+                return_secure_token: true,
+                return_idp_credential: true,
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(FirebaseError::Auth(
+                response.text().await.unwrap_or_default(),
+            ));
+        }
+
+        let payload: AuthResponse = response.json().await?;
+        let expires_in = payload.expires_in.parse::<i64>().unwrap_or(3600);
+
+        Ok(FirebaseSession {
+            email: payload.email,
+            uid: payload.local_id,
+            id_token: payload.id_token,
+            refresh_token: payload.refresh_token,
+            expires_at: Utc::now() + Duration::seconds(expires_in),
+        })
     }
 
     async fn email_password_auth(

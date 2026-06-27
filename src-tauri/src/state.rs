@@ -1,19 +1,21 @@
 use crate::{
     config::{ConfigError, ConfigStore, SessionStore},
     firebase::{FirebaseAuthClient, FirebaseError},
+    google_auth::{GoogleAuthError, GoogleDesktopAuthClient},
     ingest,
     models::{
-        AppSnapshot, ConfigUpdate, EmailPasswordSignIn, EmailPasswordSignUp, FirebaseSession, GrantRecord,
-        GrantSourceHealthRecord, GrantSourceHealthStatus, GrantSourceKind, GrantSourceRecord,
-        GrantSourceSyncOutcome, LocalConfig, OrganizationProgram, OrganizationRecord, SessionMode,
-        SessionState, SetupValidation, StartupState, WorkspaceBootstrapContract,
-        WorkspaceBootstrapStage, WorkspaceCreateRequest, WorkspaceJoinRequest,
-        WorkspaceInviteRecord, WorkspaceMembershipRecord,
+        AppSnapshot, ConfigUpdate, EmailPasswordSignIn, EmailPasswordSignUp, FirebaseSession,
+        GoogleWorkspaceCreateRequest, GoogleWorkspaceJoinRequest, GoogleWorkspaceSignInRequest,
+        GrantRecord, GrantSourceHealthRecord, GrantSourceHealthStatus, GrantSourceKind,
+        GrantSourceRecord, GrantSourceSyncOutcome, LocalConfig, OrganizationProgram,
+        OrganizationRecord, SessionMode, SessionState, SetupValidation, StartupState,
+        WorkspaceBootstrapContract, WorkspaceBootstrapStage, WorkspaceCreateRequest,
+        WorkspaceInviteRecord, WorkspaceJoinRequest, WorkspaceMembershipRecord,
     },
+    rtdb::{service_account_access_token, RealtimeDatabaseClient, RtdbError},
     source_adapters::{
         canonical_source_id_for_id, source_family_for_id, source_requires_auto_sync,
     },
-    rtdb::{service_account_access_token, RealtimeDatabaseClient, RtdbError},
 };
 use chrono::{Duration, Utc};
 use serde_json::Value;
@@ -28,6 +30,8 @@ pub enum AppStateError {
     Config(#[from] ConfigError),
     #[error("{0}")]
     Firebase(#[from] FirebaseError),
+    #[error("{0}")]
+    GoogleAuth(#[from] GoogleAuthError),
     #[error("{0}")]
     Rtdb(#[from] RtdbError),
 }
@@ -233,9 +237,7 @@ impl AppState {
         let membership = self
             .workspace_membership(&org_uid, &session.uid)
             .await?
-            .ok_or_else(|| {
-                FirebaseError::Auth("workspace membership was not found".to_string())
-            })?;
+            .ok_or_else(|| FirebaseError::Auth("workspace membership was not found".to_string()))?;
         if membership.role != "owner" {
             return Err(FirebaseError::Auth(
                 "owner access is required for this workspace action".to_string(),
@@ -291,6 +293,19 @@ impl AppState {
             .clone()
             .unwrap_or_default();
         Ok(FirebaseAuthClient::new(api_key))
+    }
+
+    pub async fn google_auth_client(&self) -> Result<GoogleDesktopAuthClient, AppStateError> {
+        let guard = self.inner.read().await;
+        let client_id = guard
+            .config
+            .google_oauth_client_id
+            .clone()
+            .unwrap_or_default();
+        let client_secret = std::env::var("GRANT_KEEPER_DEFAULT_GOOGLE_OAUTH_CLIENT_SECRET")
+            .ok()
+            .filter(|value| !value.trim().is_empty());
+        Ok(GoogleDesktopAuthClient::new(client_id, client_secret))
     }
 
     pub async fn rtdb_client(&self) -> Result<RealtimeDatabaseClient, AppStateError> {
@@ -418,6 +433,46 @@ impl AppState {
         Ok(session)
     }
 
+    pub async fn create_workspace_account_with_google(
+        &self,
+        request: GoogleWorkspaceCreateRequest,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let organization_name = request.organization_name.trim();
+        if organization_name.is_empty() {
+            return Err(FirebaseError::Auth("organization name is required".to_string()).into());
+        }
+
+        let session = self.authenticate_google_workspace_session().await?;
+        let workspace_code = request
+            .workspace_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(slug_source_name)
+            .unwrap_or_else(|| slug_workspace_name(organization_name, &session.email));
+
+        if self.workspace_exists(&workspace_code).await? {
+            if let Err(err) = self
+                .resume_existing_workspace_session(&session, &workspace_code)
+                .await
+            {
+                let _ = self.clear_session().await;
+                return Err(err);
+            }
+            return Ok(session);
+        }
+
+        self.update_config(ConfigUpdate {
+            organization_uid: Some(workspace_code.clone()),
+            setup_complete: Some(true),
+            ..Default::default()
+        })
+        .await?;
+        self.seed_workspace_organization(&session, organization_name, &workspace_code)
+            .await?;
+        Ok(session)
+    }
+
     pub async fn create_workspace_invite(&self) -> Result<WorkspaceInviteRecord, AppStateError> {
         let organization_uid = self.require_owner_workspace_access().await?;
         let session = self.current_session().await.ok_or_else(|| {
@@ -481,7 +536,33 @@ impl AppState {
             })
             .await?;
         if let Err(err) = self
-            .attach_session_to_workspace(&session, &workspace_code, "member")
+            .resume_existing_workspace_session(&session, &workspace_code)
+            .await
+        {
+            let _ = self.clear_session().await;
+            return Err(err);
+        }
+        Ok(session)
+    }
+
+    pub async fn sign_in_to_workspace_with_google(
+        &self,
+        request: GoogleWorkspaceSignInRequest,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let workspace_code = request
+            .workspace_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(slug_source_name)
+            .unwrap_or_default();
+        if workspace_code.is_empty() {
+            return Err(FirebaseError::Auth("workspace code is required".to_string()).into());
+        }
+
+        let session = self.authenticate_google_workspace_session().await?;
+        if let Err(err) = self
+            .resume_existing_workspace_session(&session, &workspace_code)
             .await
         {
             let _ = self.clear_session().await;
@@ -513,10 +594,7 @@ impl AppState {
             .await?
             .ok_or_else(|| FirebaseError::Auth("invite token was not found".to_string()))?;
         if !invite.active || invite.claimed_at.is_some() {
-            return Err(FirebaseError::Auth(
-                "invite token is no longer active".to_string(),
-            )
-            .into());
+            return Err(FirebaseError::Auth("invite token is no longer active".to_string()).into());
         }
 
         let session = self
@@ -525,10 +603,34 @@ impl AppState {
                 password: request.password,
             })
             .await?;
-        if let Err(err) = self
-            .redeem_workspace_invite(&session, &invite)
-            .await
-        {
+        if let Err(err) = self.redeem_workspace_invite(&session, &invite).await {
+            let _ = self.clear_session().await;
+            return Err(err);
+        }
+        Ok(session)
+    }
+
+    pub async fn join_workspace_with_google(
+        &self,
+        request: GoogleWorkspaceJoinRequest,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let invite_token = request
+            .invite_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| FirebaseError::Auth("invite token is required".to_string()))?
+            .to_string();
+        let invite = self
+            .workspace_invite(&invite_token)
+            .await?
+            .ok_or_else(|| FirebaseError::Auth("invite token was not found".to_string()))?;
+        if !invite.active || invite.claimed_at.is_some() {
+            return Err(FirebaseError::Auth("invite token is no longer active".to_string()).into());
+        }
+
+        let session = self.authenticate_google_workspace_session().await?;
+        if let Err(err) = self.redeem_workspace_invite(&session, &invite).await {
             let _ = self.clear_session().await;
             return Err(err);
         }
@@ -1101,18 +1203,23 @@ impl AppState {
                     .ok()
                     .filter(|value| !value.trim().is_empty());
         }
+        if config.google_oauth_client_id.is_none() {
+            config.google_oauth_client_id =
+                std::env::var("GRANT_KEEPER_DEFAULT_GOOGLE_OAUTH_CLIENT_ID")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty());
+        }
         if config.anthropic_api_key.is_none() {
             config.anthropic_api_key = std::env::var("GRANT_KEEPER_DEFAULT_ANTHROPIC_API_KEY")
                 .ok()
                 .filter(|value| !value.trim().is_empty());
         }
         if config.background_refresh_interval_ms.is_none() {
-            config.background_refresh_interval_ms = std::env::var(
-                "GRANT_KEEPER_DEFAULT_REFRESH_INTERVAL_MS",
-            )
-            .ok()
-            .and_then(|value| value.trim().parse::<u32>().ok())
-            .filter(|value| *value > 0);
+            config.background_refresh_interval_ms =
+                std::env::var("GRANT_KEEPER_DEFAULT_REFRESH_INTERVAL_MS")
+                    .ok()
+                    .and_then(|value| value.trim().parse::<u32>().ok())
+                    .filter(|value| *value > 0);
         }
         if config.firebase_uid.is_none() {
             config.firebase_uid = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_UID")
@@ -1125,6 +1232,21 @@ impl AppState {
                 .filter(|value| !value.trim().is_empty());
         }
         config
+    }
+}
+
+impl AppState {
+    async fn authenticate_google_workspace_session(
+        &self,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let google = self.google_auth_client().await?;
+        let firebase = self.firebase_auth_client().await?;
+        let tokens = google.authenticate().await?;
+        let session = firebase
+            .sign_in_with_google_id_token(&tokens.id_token, Some(&tokens.access_token))
+            .await?;
+        self.set_session(session.clone()).await?;
+        Ok(session)
     }
 }
 
@@ -1311,9 +1433,7 @@ fn build_source_health(
         _ if source
             .last_run_at
             .as_ref()
-            .map(|timestamp| {
-                now.signed_duration_since(*timestamp) > chrono::Duration::hours(24)
-            })
+            .map(|timestamp| now.signed_duration_since(*timestamp) > chrono::Duration::hours(24))
             .unwrap_or(false) =>
         {
             (
@@ -2171,7 +2291,10 @@ mod tests {
 
         let health = build_source_health(&source, 0, Utc::now());
 
-        assert_eq!(health.health_status, GrantSourceHealthStatus::PendingAdapter);
+        assert_eq!(
+            health.health_status,
+            GrantSourceHealthStatus::PendingAdapter
+        );
         assert_eq!(
             health.health_note.as_deref(),
             Some("CSAC Cal Grant page is not a public opportunity feed and is blocked for automation")
@@ -2246,22 +2369,16 @@ mod tests {
 
     #[test]
     fn resolve_existing_workspace_role_allows_contact_email_to_resume_owner_access() {
-        let role = resolve_existing_workspace_role(
-            None,
-            Some("Owner@Example.org"),
-            "owner@example.org",
-        );
+        let role =
+            resolve_existing_workspace_role(None, Some("Owner@Example.org"), "owner@example.org");
 
         assert_eq!(role.as_deref(), Some("owner"));
     }
 
     #[test]
     fn resolve_existing_workspace_role_rejects_unmatched_email_without_membership() {
-        let role = resolve_existing_workspace_role(
-            None,
-            Some("owner@example.org"),
-            "writer@example.org",
-        );
+        let role =
+            resolve_existing_workspace_role(None, Some("owner@example.org"), "writer@example.org");
 
         assert_eq!(role, None);
     }
@@ -2272,7 +2389,10 @@ mod tests {
         let rtdb_url = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_RTD_URL").ok()?;
         let web_api_key = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_WEB_API_KEY").ok()?;
         let auth_domain = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_AUTH_DOMAIN").ok()?;
-        if rtdb_url.trim().is_empty() || web_api_key.trim().is_empty() || auth_domain.trim().is_empty() {
+        if rtdb_url.trim().is_empty()
+            || web_api_key.trim().is_empty()
+            || auth_domain.trim().is_empty()
+        {
             return None;
         }
         Some(LocalConfig {
@@ -2367,7 +2487,10 @@ mod tests {
             .expect("member sign in to existing workspace");
         assert_eq!(member_signed_in.email, member_email);
 
-        state.clear_session().await.expect("clear member session again");
+        state
+            .clear_session()
+            .await
+            .expect("clear member session again");
 
         let owner_signed_in = state
             .sign_in_to_workspace(WorkspaceJoinRequest {
@@ -2385,7 +2508,10 @@ mod tests {
             .await
             .expect("owner password reset request");
 
-        state.clear_session().await.expect("clear before invalid sign in");
+        state
+            .clear_session()
+            .await
+            .expect("clear before invalid sign in");
         let invalid = state
             .sign_in_to_workspace(WorkspaceJoinRequest {
                 email: member_email,

@@ -7,6 +7,7 @@ pub struct LocalConfig {
     pub firebase_rtdb_url: Option<String>,
     pub firebase_web_api_key: Option<String>,
     pub firebase_auth_domain: Option<String>,
+    pub google_oauth_client_id: Option<String>,
     pub anthropic_api_key: Option<String>,
     pub background_refresh_interval_ms: Option<u32>,
     pub draft_generation_preference: DraftGenerationPreference,
@@ -348,6 +349,7 @@ pub struct ConfigUpdate {
     pub firebase_rtdb_url: Option<String>,
     pub firebase_web_api_key: Option<String>,
     pub firebase_auth_domain: Option<String>,
+    pub google_oauth_client_id: Option<String>,
     pub anthropic_api_key: Option<String>,
     pub background_refresh_interval_ms: Option<u32>,
     pub draft_generation_preference: Option<DraftGenerationPreference>,
@@ -372,6 +374,25 @@ pub struct WorkspaceJoinRequest {
     pub email: String,
     pub password: String,
     pub workspace_code: Option<String>,
+    pub invite_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct GoogleWorkspaceCreateRequest {
+    pub organization_name: String,
+    pub workspace_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct GoogleWorkspaceSignInRequest {
+    pub workspace_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct GoogleWorkspaceJoinRequest {
     pub invite_token: Option<String>,
 }
 

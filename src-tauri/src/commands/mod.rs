@@ -2,9 +2,10 @@ use crate::{
     ai, db, draft_schema, ingest,
     models::{
         AppSnapshot, ConfigUpdate, DraftRecord, DraftSummary, EmailPasswordSignIn,
-        EmailPasswordSignUp, FirebaseSession,
-        GrantRecord, GrantSourceHealthRecord, GrantSourceRecord, GrantSourceSyncOutcome,
-        LocalConfig, OrganizationRecord, SetupValidation, WatchlistEntry, WorkspaceCreateRequest,
+        EmailPasswordSignUp, FirebaseSession, GoogleWorkspaceCreateRequest,
+        GoogleWorkspaceJoinRequest, GoogleWorkspaceSignInRequest, GrantRecord,
+        GrantSourceHealthRecord, GrantSourceRecord, GrantSourceSyncOutcome, LocalConfig,
+        OrganizationRecord, SetupValidation, WatchlistEntry, WorkspaceCreateRequest,
         WorkspaceInviteRecord, WorkspaceJoinRequest,
     },
     state::AppState,
@@ -74,6 +75,17 @@ pub async fn create_workspace_account(
 }
 
 #[tauri::command]
+pub async fn create_workspace_account_with_google(
+    state: State<'_, AppState>,
+    request: GoogleWorkspaceCreateRequest,
+) -> Result<FirebaseSession, String> {
+    state
+        .create_workspace_account_with_google(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn sign_in_to_workspace(
     state: State<'_, AppState>,
     request: WorkspaceJoinRequest,
@@ -85,12 +97,34 @@ pub async fn sign_in_to_workspace(
 }
 
 #[tauri::command]
+pub async fn sign_in_to_workspace_with_google(
+    state: State<'_, AppState>,
+    request: GoogleWorkspaceSignInRequest,
+) -> Result<FirebaseSession, String> {
+    state
+        .sign_in_to_workspace_with_google(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn sign_up_to_join_workspace(
     state: State<'_, AppState>,
     request: WorkspaceJoinRequest,
 ) -> Result<FirebaseSession, String> {
     state
         .sign_up_to_join_workspace(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn join_workspace_with_google(
+    state: State<'_, AppState>,
+    request: GoogleWorkspaceJoinRequest,
+) -> Result<FirebaseSession, String> {
+    state
+        .join_workspace_with_google(request)
         .await
         .map_err(error_string)
 }
@@ -506,7 +540,9 @@ pub async fn generate_draft(
         &org_capacity,
     ]
     .into_iter()
-    .fold(0u32, |acc, generation| acc.saturating_add(token_count(generation)));
+    .fold(0u32, |acc, generation| {
+        acc.saturating_add(token_count(generation))
+    });
     let loi_text = if let Some(loi_prompt) = &prompt_bundle.section_loi_text {
         let section = llm_client
             .generate_section(&prompt_bundle.system_prompt, loi_prompt)

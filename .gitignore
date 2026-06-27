@@ -10,3 +10,4 @@ src-tauri/target/
 tauri-dev.log
 src-tauri/live-sync-output.log
 lao-app-e6f57-firebase-adminsdk-wyjcq-a4fcb9800a.json
+client_secret_*.apps.googleusercontent.com*.json

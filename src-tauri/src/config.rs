@@ -62,6 +62,10 @@ impl ConfigStore {
                 .firebase_auth_domain
                 .clone()
                 .or_else(|| current.firebase_auth_domain.clone()),
+            google_oauth_client_id: update
+                .google_oauth_client_id
+                .clone()
+                .or_else(|| current.google_oauth_client_id.clone()),
             anthropic_api_key: update
                 .anthropic_api_key
                 .clone()
@@ -160,6 +164,7 @@ mod tests {
             firebase_rtdb_url: Some("https://example.firebaseio.com".into()),
             firebase_web_api_key: Some("abc".into()),
             firebase_auth_domain: Some("example.firebaseapp.com".into()),
+            google_oauth_client_id: Some("google-client".into()),
             anthropic_api_key: Some("sk-ant-1".into()),
             background_refresh_interval_ms: Some(120_000),
             draft_generation_preference: DraftGenerationPreference::Ai,
@@ -172,6 +177,7 @@ mod tests {
             firebase_rtdb_url: None,
             firebase_web_api_key: Some("def".into()),
             firebase_auth_domain: None,
+            google_oauth_client_id: None,
             anthropic_api_key: None,
             background_refresh_interval_ms: None,
             draft_generation_preference: None,
@@ -194,6 +200,7 @@ mod tests {
             firebase_rtdb_url: Some("https://example.firebaseio.com".into()),
             firebase_web_api_key: Some("key".into()),
             firebase_auth_domain: Some("domain".into()),
+            google_oauth_client_id: Some("google-client".into()),
             anthropic_api_key: Some("sk-ant".into()),
             background_refresh_interval_ms: None,
             draft_generation_preference: DraftGenerationPreference::Ai,
@@ -206,6 +213,7 @@ mod tests {
             firebase_rtdb_url: None,
             firebase_web_api_key: None,
             firebase_auth_domain: None,
+            google_oauth_client_id: None,
             anthropic_api_key: None,
             background_refresh_interval_ms: None,
             draft_generation_preference: None,
@@ -225,6 +233,7 @@ mod tests {
             firebase_rtdb_url: Some("https://new.firebaseio.com".into()),
             firebase_web_api_key: Some("new-key".into()),
             firebase_auth_domain: Some("new.firebaseapp.com".into()),
+            google_oauth_client_id: Some("new-google-client".into()),
             anthropic_api_key: Some("sk-ant-new".into()),
             background_refresh_interval_ms: Some(90_000),
             draft_generation_preference: Some(DraftGenerationPreference::Ai),
@@ -239,6 +248,10 @@ mod tests {
             Some("https://new.firebaseio.com".into())
         );
         assert_eq!(next.firebase_web_api_key, Some("new-key".into()));
+        assert_eq!(
+            next.google_oauth_client_id,
+            Some("new-google-client".into())
+        );
         assert_eq!(next.setup_complete, true);
     }
 
@@ -306,6 +319,7 @@ mod tests {
             firebase_rtdb_url: Some("https://rt.firebaseio.com".into()),
             firebase_web_api_key: Some("web-key".into()),
             firebase_auth_domain: Some("auth.example.com".into()),
+            google_oauth_client_id: Some("google-client".into()),
             anthropic_api_key: Some("sk-ant-123".into()),
             background_refresh_interval_ms: Some(120_000),
             draft_generation_preference: DraftGenerationPreference::Ai,

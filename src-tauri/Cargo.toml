@@ -25,6 +25,8 @@ rtdb-rs = { version = "0.3.1", path = "../../firebase-rtdb-rs" }
 scraper = "0.24"
 sha2 = "0.10"
 url = "2"
+base64 = "0.22"
+webbrowser = "1"
 
 [dev-dependencies]
 wiremock = "0.6"

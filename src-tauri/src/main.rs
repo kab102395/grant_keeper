@@ -6,6 +6,7 @@ mod config;
 mod db;
 mod draft_schema;
 mod firebase;
+mod google_auth;
 mod ingest;
 mod models;
 mod rtdb;
@@ -32,9 +33,12 @@ fn main() {
             commands::sign_up_with_email_password,
             commands::start_dev_profile,
             commands::create_workspace_account,
+            commands::create_workspace_account_with_google,
             commands::create_workspace_invite,
             commands::sign_in_to_workspace,
+            commands::sign_in_to_workspace_with_google,
             commands::sign_up_to_join_workspace,
+            commands::join_workspace_with_google,
             commands::refresh_session,
             commands::send_password_reset_email,
             commands::validate_anthropic_api_key,
