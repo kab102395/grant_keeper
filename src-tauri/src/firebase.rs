@@ -87,13 +87,32 @@ impl FirebaseAuthClient {
         email: &str,
         password: &str,
     ) -> Result<FirebaseSession, FirebaseError> {
+        self.email_password_auth("accounts:signInWithPassword", email, password)
+            .await
+    }
+
+    pub async fn sign_up_with_email_password(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<FirebaseSession, FirebaseError> {
+        self.email_password_auth("accounts:signUp", email, password)
+            .await
+    }
+
+    async fn email_password_auth(
+        &self,
+        endpoint: &str,
+        email: &str,
+        password: &str,
+    ) -> Result<FirebaseSession, FirebaseError> {
         if self.api_key.trim().is_empty() {
             return Err(FirebaseError::MissingApiKey);
         }
 
         let url = format!(
-            "{}/accounts:signInWithPassword?key={}",
-            self.sign_in_base_url, self.api_key
+            "{}/{}?key={}",
+            self.sign_in_base_url, endpoint, self.api_key
         );
 
         let response = self
@@ -124,7 +143,6 @@ impl FirebaseAuthClient {
             expires_at: Utc::now() + Duration::seconds(expires_in),
         })
     }
-
     pub async fn refresh_session(
         &self,
         refresh_token: &str,
@@ -308,6 +326,33 @@ mod tests {
         // expires_at should be ~1 hour from now
         let delta = session.expires_at - Utc::now();
         assert!(delta.num_seconds() > 3500 && delta.num_seconds() <= 3600);
+    }
+
+    #[tokio::test]
+    async fn sign_up_success_parses_session_fields() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path_regex(r"/accounts:signUp"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "idToken": "signup-id-tok",
+                "refreshToken": "signup-ref-tok",
+                "localId": "uid-signup-001",
+                "email": "newuser@example.com",
+                "expiresIn": "3600"
+            })))
+            .mount(&server)
+            .await;
+
+        let client = make_client(&server);
+        let session = client
+            .sign_up_with_email_password("newuser@example.com", "secret")
+            .await
+            .unwrap();
+
+        assert_eq!(session.id_token, "signup-id-tok");
+        assert_eq!(session.refresh_token, "signup-ref-tok");
+        assert_eq!(session.uid, "uid-signup-001");
+        assert_eq!(session.email, "newuser@example.com");
     }
 
     #[tokio::test]

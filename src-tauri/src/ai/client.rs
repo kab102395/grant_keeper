@@ -86,6 +86,36 @@ impl AnthropicClient {
         system_prompt: &str,
         prompt: &str,
     ) -> Result<SectionGeneration, AiError> {
+        let MessagesResponse { content, usage } = self.send_message(system_prompt, prompt, 1200).await?;
+        let text = content
+            .into_iter()
+            .find_map(|item| item.text)
+            .ok_or_else(|| AiError::InvalidResponse("missing text content".to_string()))?;
+
+        Ok(SectionGeneration {
+            text,
+            input_tokens: usage.as_ref().and_then(|usage| usage.input_tokens),
+            output_tokens: usage.as_ref().and_then(|usage| usage.output_tokens),
+        })
+    }
+
+    pub async fn validate_api_key(&self) -> Result<(), AiError> {
+        let _ = self
+            .send_message(
+                "Return the single word ok.",
+                "Confirm the API key is valid.",
+                8,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn send_message(
+        &self,
+        system_prompt: &str,
+        prompt: &str,
+        max_tokens: u32,
+    ) -> Result<MessagesResponse, AiError> {
         if self.api_key.trim().is_empty() {
             return Err(AiError::MissingApiKey);
         }
@@ -98,7 +128,7 @@ impl AnthropicClient {
             .header("content-type", "application/json")
             .json(&MessagesRequest {
                 model: &self.model,
-                max_tokens: 1200,
+                max_tokens,
                 system: system_prompt,
                 messages: vec![Message {
                     role: "user",
@@ -112,17 +142,7 @@ impl AnthropicClient {
             return Err(AiError::Response(response.text().await.unwrap_or_default()));
         }
 
-        let MessagesResponse { content, usage } = response.json().await?;
-        let text = content
-            .into_iter()
-            .find_map(|item| item.text)
-            .ok_or_else(|| AiError::InvalidResponse("missing text content".to_string()))?;
-
-        Ok(SectionGeneration {
-            text,
-            input_tokens: usage.as_ref().and_then(|usage| usage.input_tokens),
-            output_tokens: usage.as_ref().and_then(|usage| usage.output_tokens),
-        })
+        Ok(response.json().await?)
     }
 }
 

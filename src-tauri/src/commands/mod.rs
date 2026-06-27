@@ -1,9 +1,11 @@
 use crate::{
     ai, db, draft_schema, ingest,
     models::{
-        AppSnapshot, ConfigUpdate, DraftRecord, DraftSummary, EmailPasswordSignIn, FirebaseSession,
+        AppSnapshot, ConfigUpdate, DraftRecord, DraftSummary, EmailPasswordSignIn,
+        EmailPasswordSignUp, FirebaseSession,
         GrantRecord, GrantSourceHealthRecord, GrantSourceRecord, GrantSourceSyncOutcome,
-        LocalConfig, OrganizationRecord, SetupValidation, WatchlistEntry, WorkspaceStartRequest,
+        LocalConfig, OrganizationRecord, SetupValidation, WatchlistEntry, WorkspaceCreateRequest,
+        WorkspaceJoinRequest,
     },
     state::AppState,
 };
@@ -45,17 +47,50 @@ pub async fn sign_in_with_email_password(
 }
 
 #[tauri::command]
+pub async fn sign_up_with_email_password(
+    state: State<'_, AppState>,
+    request: EmailPasswordSignUp,
+) -> Result<FirebaseSession, String> {
+    state
+        .sign_up_with_email_password(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn start_dev_profile(state: State<'_, AppState>) -> Result<FirebaseSession, String> {
     state.start_dev_profile().await.map_err(error_string)
 }
 
 #[tauri::command]
-pub async fn start_workspace_profile(
+pub async fn create_workspace_account(
     state: State<'_, AppState>,
-    request: WorkspaceStartRequest,
+    request: WorkspaceCreateRequest,
 ) -> Result<FirebaseSession, String> {
     state
-        .start_workspace_profile(request)
+        .create_workspace_account(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn sign_in_to_workspace(
+    state: State<'_, AppState>,
+    request: WorkspaceJoinRequest,
+) -> Result<FirebaseSession, String> {
+    state
+        .sign_in_to_workspace(request)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn sign_up_to_join_workspace(
+    state: State<'_, AppState>,
+    request: WorkspaceJoinRequest,
+) -> Result<FirebaseSession, String> {
+    state
+        .sign_up_to_join_workspace(request)
         .await
         .map_err(error_string)
 }
@@ -69,6 +104,12 @@ pub async fn refresh_session(
         .ensure_valid_session(&auth)
         .await
         .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn validate_anthropic_api_key(api_key: String) -> Result<(), String> {
+    let client = ai::AnthropicClient::new(api_key);
+    client.validate_api_key().await.map_err(error_string)
 }
 
 #[tauri::command]
@@ -612,7 +653,81 @@ pub async fn reveal_path_in_folder(path: String) -> Result<(), String> {
 }
 
 fn error_string<E: std::fmt::Display>(err: E) -> String {
-    err.to_string()
+    let raw = err.to_string();
+    let normalized = raw.to_ascii_lowercase();
+
+    let payload = if normalized.contains("invalid_grant")
+        || normalized.contains("token expired")
+        || normalized.contains("invalid refresh token")
+        || normalized.contains("missing active session")
+        || normalized.contains("missing refresh token")
+    {
+        CommandErrorPayload {
+            code: "session_expired",
+            message: "Your session expired or is no longer valid. Sign in again to continue."
+                .to_string(),
+            detail: Some(raw),
+            retryable: false,
+            requires_reauth: true,
+            service: Some("firebase"),
+        }
+    } else if normalized.contains("firebase auth request failed") {
+        CommandErrorPayload {
+            code: "firebase_unavailable",
+            message: "Grant Keeper could not reach Firebase right now. Retry in a moment."
+                .to_string(),
+            detail: Some(raw),
+            retryable: true,
+            requires_reauth: false,
+            service: Some("firebase"),
+        }
+    } else if normalized.contains("rtdb request failed")
+        || normalized.contains("service account auth failed")
+    {
+        CommandErrorPayload {
+            code: "rtdb_unavailable",
+            message:
+                "Grant Keeper could not reach the grants database right now. Retry in a moment."
+                    .to_string(),
+            detail: Some(raw),
+            retryable: true,
+            requires_reauth: false,
+            service: Some("rtdb"),
+        }
+    } else if normalized.contains("anthropic request failed")
+        || normalized.contains("anthropic returned an error")
+    {
+        CommandErrorPayload {
+            code: "anthropic_unavailable",
+            message: "Grant Keeper could not reach Anthropic right now. Retry in a moment or use local scaffold mode."
+                .to_string(),
+            detail: Some(raw),
+            retryable: true,
+            requires_reauth: false,
+            service: Some("anthropic"),
+        }
+    } else {
+        CommandErrorPayload {
+            code: "unknown",
+            message: raw.clone(),
+            detail: Some(raw),
+            retryable: false,
+            requires_reauth: false,
+            service: None,
+        }
+    };
+
+    serde_json::to_string(&payload).unwrap_or(payload.message)
+}
+
+#[derive(Debug, Serialize)]
+struct CommandErrorPayload {
+    code: &'static str,
+    message: String,
+    detail: Option<String>,
+    retryable: bool,
+    requires_reauth: bool,
+    service: Option<&'static str>,
 }
 
 async fn load_grant_record(

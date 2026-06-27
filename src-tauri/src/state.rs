@@ -3,11 +3,12 @@ use crate::{
     firebase::{FirebaseAuthClient, FirebaseError},
     ingest,
     models::{
-        AppSnapshot, ConfigUpdate, EmailPasswordSignIn, FirebaseSession, GrantRecord,
+        AppSnapshot, ConfigUpdate, EmailPasswordSignIn, EmailPasswordSignUp, FirebaseSession, GrantRecord,
         GrantSourceHealthRecord, GrantSourceHealthStatus, GrantSourceKind, GrantSourceRecord,
         GrantSourceSyncOutcome, LocalConfig, OrganizationProgram, OrganizationRecord, SessionMode,
         SessionState, SetupValidation, StartupState, WorkspaceBootstrapContract,
-        WorkspaceBootstrapStage, WorkspaceMembershipRecord,
+        WorkspaceBootstrapStage, WorkspaceCreateRequest, WorkspaceJoinRequest,
+        WorkspaceMembershipRecord,
     },
     source_adapters::{
         canonical_source_id_for_id, source_family_for_id, source_requires_auto_sync,
@@ -228,33 +229,38 @@ impl AppState {
         &self,
         auth: &FirebaseAuthClient,
     ) -> Result<Option<FirebaseSession>, AppStateError> {
-        let maybe_refresh_token: Option<String> = {
-            let guard = self.inner.read().await;
-            guard
-                .session
-                .as_ref()
-                .and_then(|session: &FirebaseSession| {
-                    if is_local_session_ref(session) {
-                        None
-                    } else {
-                        Some(session.refresh_token.clone())
-                    }
-                })
-        };
+        let current_session = self.current_session().await;
+        let maybe_refresh_token = current_session
+            .as_ref()
+            .and_then(|session: &FirebaseSession| {
+                if is_local_session_ref(session) || !session.is_expiring_soon() {
+                    None
+                } else {
+                    Some(session.refresh_token.clone())
+                }
+            });
 
         let Some(refresh_token) = maybe_refresh_token else {
-            return Ok(self.current_session().await);
+            return Ok(current_session);
         };
 
-        let refreshed = auth.refresh_session(&refresh_token).await?;
-        let email: String = self
-            .current_session()
-            .await
-            .map(|session| session.email)
+        let email = current_session
+            .as_ref()
+            .map(|session| session.email.clone())
             .unwrap_or_default();
-        let refreshed = FirebaseSession { email, ..refreshed };
-        self.set_session(refreshed.clone()).await?;
-        Ok(Some(refreshed))
+
+        match auth.refresh_session(&refresh_token).await {
+            Ok(refreshed) => {
+                let refreshed = FirebaseSession { email, ..refreshed };
+                self.set_session(refreshed.clone()).await?;
+                Ok(Some(refreshed))
+            }
+            Err(err) if session_refresh_requires_reauth(&err) => {
+                self.clear_session().await?;
+                Err(err.into())
+            }
+            Err(err) => Err(err.into()),
+        }
     }
 
     pub async fn firebase_auth_client(&self) -> Result<FirebaseAuthClient, AppStateError> {
@@ -293,6 +299,18 @@ impl AppState {
         Ok(session)
     }
 
+    pub async fn sign_up_with_email_password(
+        &self,
+        request: EmailPasswordSignUp,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let auth = self.firebase_auth_client().await?;
+        let session = auth
+            .sign_up_with_email_password(&request.email, &request.password)
+            .await?;
+        self.set_session(session.clone()).await?;
+        Ok(session)
+    }
+
     pub async fn start_dev_profile(&self) -> Result<FirebaseSession, AppStateError> {
         let uid = format!("dev-{}", Uuid::new_v4());
         let session = FirebaseSession {
@@ -314,9 +332,9 @@ impl AppState {
         Ok(session)
     }
 
-    pub async fn start_workspace_profile(
+    pub async fn create_workspace_account(
         &self,
-        request: crate::models::WorkspaceStartRequest,
+        request: WorkspaceCreateRequest,
     ) -> Result<FirebaseSession, AppStateError> {
         let organization_name = request.organization_name.trim();
         if organization_name.is_empty() {
@@ -328,6 +346,10 @@ impl AppState {
             return Err(FirebaseError::Auth("email is required".to_string()).into());
         }
 
+        if request.password.trim().is_empty() {
+            return Err(FirebaseError::Auth("password is required".to_string()).into());
+        }
+
         let workspace_code = request
             .workspace_code
             .as_deref()
@@ -336,16 +358,13 @@ impl AppState {
             .map(slug_source_name)
             .unwrap_or_else(|| slug_workspace_name(organization_name, email));
 
-        let uid = format!("workspace:{workspace_code}:{}", slug_identity(email));
-        let session = FirebaseSession {
-            email: email.to_string(),
-            uid,
-            id_token: format!("workspace-token:{workspace_code}:{}", Uuid::new_v4()),
-            refresh_token: format!("workspace-refresh:{workspace_code}:{}", Uuid::new_v4()),
-            expires_at: Utc::now() + Duration::days(3650),
-        };
-
-        self.set_session(session.clone()).await?;
+        self.ensure_workspace_missing(&workspace_code).await?;
+        let session = self
+            .sign_up_with_email_password(EmailPasswordSignUp {
+                email: email.to_string(),
+                password: request.password,
+            })
+            .await?;
         self.update_config(ConfigUpdate {
             organization_uid: Some(workspace_code.clone()),
             setup_complete: Some(true),
@@ -354,6 +373,72 @@ impl AppState {
         .await?;
         self.seed_workspace_organization(&session, organization_name, &workspace_code)
             .await?;
+        Ok(session)
+    }
+
+    pub async fn sign_in_to_workspace(
+        &self,
+        request: WorkspaceJoinRequest,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let email = request.email.trim();
+        if email.is_empty() {
+            return Err(FirebaseError::Auth("email is required".to_string()).into());
+        }
+        if request.password.trim().is_empty() {
+            return Err(FirebaseError::Auth("password is required".to_string()).into());
+        }
+        let workspace_code = slug_source_name(request.workspace_code.trim());
+        if workspace_code.is_empty() {
+            return Err(FirebaseError::Auth("workspace code is required".to_string()).into());
+        }
+
+        let session = self
+            .sign_in_with_email_password(EmailPasswordSignIn {
+                email: email.to_string(),
+                password: request.password,
+            })
+            .await?;
+        self.attach_session_to_workspace(&session, &workspace_code, "member")
+            .await?;
+        self.update_config(ConfigUpdate {
+            organization_uid: Some(workspace_code),
+            setup_complete: Some(true),
+            ..Default::default()
+        })
+        .await?;
+        Ok(session)
+    }
+
+    pub async fn sign_up_to_join_workspace(
+        &self,
+        request: WorkspaceJoinRequest,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let email = request.email.trim();
+        if email.is_empty() {
+            return Err(FirebaseError::Auth("email is required".to_string()).into());
+        }
+        if request.password.trim().is_empty() {
+            return Err(FirebaseError::Auth("password is required".to_string()).into());
+        }
+        let workspace_code = slug_source_name(request.workspace_code.trim());
+        if workspace_code.is_empty() {
+            return Err(FirebaseError::Auth("workspace code is required".to_string()).into());
+        }
+
+        let session = self
+            .sign_up_with_email_password(EmailPasswordSignUp {
+                email: email.to_string(),
+                password: request.password,
+            })
+            .await?;
+        self.attach_session_to_workspace(&session, &workspace_code, "member")
+            .await?;
+        self.update_config(ConfigUpdate {
+            organization_uid: Some(workspace_code),
+            setup_complete: Some(true),
+            ..Default::default()
+        })
+        .await?;
         Ok(session)
     }
 
@@ -451,6 +536,58 @@ impl AppState {
             email: session.email.clone(),
             organization_uid: workspace_code.to_string(),
             role: "owner".to_string(),
+            updated_at: Some(Utc::now()),
+        };
+        client
+            .put_json(
+                &crate::db::organization_member_path(workspace_code, &session.uid),
+                &membership,
+            )
+            .await?;
+        client
+            .put_json(
+                &crate::db::membership_path(&session.uid, workspace_code),
+                &membership,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn ensure_workspace_missing(&self, workspace_code: &str) -> Result<(), AppStateError> {
+        let client = self.rtdb_client().await?;
+        let org_path = crate::db::organization_path(workspace_code);
+        let existing = client.get_json(&org_path).await?;
+        if matches!(existing, Value::Null) {
+            return Ok(());
+        }
+
+        Err(FirebaseError::Auth(format!(
+            "workspace code {workspace_code} is already in use"
+        ))
+        .into())
+    }
+
+    async fn attach_session_to_workspace(
+        &self,
+        session: &FirebaseSession,
+        workspace_code: &str,
+        role: &str,
+    ) -> Result<(), AppStateError> {
+        let client = self.rtdb_client().await?;
+        let org_path = crate::db::organization_path(workspace_code);
+        let existing = client.get_json(&org_path).await?;
+        if matches!(existing, Value::Null) {
+            return Err(FirebaseError::Auth(format!(
+                "workspace code {workspace_code} was not found"
+            ))
+            .into());
+        }
+
+        let membership = WorkspaceMembershipRecord {
+            firebase_uid: session.uid.clone(),
+            email: session.email.clone(),
+            organization_uid: workspace_code.to_string(),
+            role: role.to_string(),
             updated_at: Some(Utc::now()),
         };
         client
@@ -815,6 +952,22 @@ fn is_local_session(session: Option<&FirebaseSession>) -> bool {
     session.map(is_local_session_ref).unwrap_or(false)
 }
 
+fn session_refresh_requires_reauth(error: &FirebaseError) -> bool {
+    match error {
+        FirebaseError::MissingRefreshToken => true,
+        FirebaseError::Auth(message) => {
+            let normalized = message.to_ascii_lowercase();
+            normalized.contains("invalid_grant")
+                || normalized.contains("token expired")
+                || normalized.contains("user token expired")
+                || normalized.contains("invalid refresh token")
+                || normalized.contains("user disabled")
+                || normalized.contains("user not found")
+        }
+        _ => false,
+    }
+}
+
 fn is_local_session_ref(session: &FirebaseSession) -> bool {
     session.email.ends_with("@grantkeeper.local")
         || session.id_token.starts_with("dev:")
@@ -856,8 +1009,12 @@ fn startup_state(config: &LocalConfig, session: Option<&FirebaseSession>) -> Sta
 
 fn workspace_bootstrap_contract() -> WorkspaceBootstrapContract {
     WorkspaceBootstrapContract {
-        join_model: "admin_created_workspace_with_optional_code".to_string(),
-        required_inputs: vec!["organization_name".to_string(), "email".to_string()],
+        join_model: "self_serve_account_and_workspace".to_string(),
+        required_inputs: vec![
+            "email".to_string(),
+            "password".to_string(),
+            "organization_name_or_workspace_code".to_string(),
+        ],
         identity_boundary_session_key: "firebase_uid".to_string(),
         identity_boundary_data_key: "organization_uid".to_string(),
         screens: vec![
@@ -865,13 +1022,15 @@ fn workspace_bootstrap_contract() -> WorkspaceBootstrapContract {
                 id: "create_or_join".to_string(),
                 title: "Create or join workspace".to_string(),
                 description:
-                    "Capture organization name and work email, then create the workspace record.".to_string(),
+                    "Choose whether to create an account, sign in, or join an existing workspace with a workspace code."
+                        .to_string(),
             },
             WorkspaceBootstrapStage {
                 id: "confirm_ready".to_string(),
                 title: "Confirm workspace ready".to_string(),
                 description:
-                    "Save the workspace identity, restore config, and verify the app is ready.".to_string(),
+                    "Persist the Firebase session, attach it to the selected organization, and restore workspace config."
+                        .to_string(),
             },
             WorkspaceBootstrapStage {
                 id: "workspace_home".to_string(),
@@ -1627,10 +1786,6 @@ fn slug_workspace_name(name: &str, email: &str) -> String {
     }
 }
 
-fn slug_identity(value: &str) -> String {
-    slug_source_name(value)
-}
-
 fn collection_entries(payload: Value) -> Vec<(String, Value)> {
     match payload {
         Value::Null => Vec::new(),
@@ -1713,13 +1868,13 @@ mod tests {
     #[test]
     fn workspace_bootstrap_contract_has_three_steps() {
         let contract = workspace_bootstrap_contract();
-        assert_eq!(
-            contract.join_model,
-            "admin_created_workspace_with_optional_code"
-        );
+        assert_eq!(contract.join_model, "self_serve_account_and_workspace");
         assert_eq!(contract.identity_boundary_session_key, "firebase_uid");
         assert_eq!(contract.identity_boundary_data_key, "organization_uid");
-        assert_eq!(contract.required_inputs, vec!["organization_name", "email"]);
+        assert_eq!(
+            contract.required_inputs,
+            vec!["email", "password", "organization_name_or_workspace_code"]
+        );
         assert_eq!(contract.screens.len(), 3);
         assert_eq!(contract.screens[0].id, "create_or_join");
         assert_eq!(contract.screens[1].id, "confirm_ready");

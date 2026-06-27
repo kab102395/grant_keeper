@@ -359,10 +359,19 @@ pub struct ConfigUpdate {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(default)]
-pub struct WorkspaceStartRequest {
+pub struct WorkspaceCreateRequest {
     pub email: String,
+    pub password: String,
     pub organization_name: String,
     pub workspace_code: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(default)]
+pub struct WorkspaceJoinRequest {
+    pub email: String,
+    pub password: String,
+    pub workspace_code: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -390,6 +399,21 @@ pub struct EmailPasswordSignIn {
 }
 
 impl Default for EmailPasswordSignIn {
+    fn default() -> Self {
+        Self {
+            email: String::new(),
+            password: String::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct EmailPasswordSignUp {
+    pub email: String,
+    pub password: String,
+}
+
+impl Default for EmailPasswordSignUp {
     fn default() -> Self {
         Self {
             email: String::new(),
