@@ -1,0 +1,26 @@
+{
+  "ca-grants-csv": {
+    "source_id": "ca-grants-csv",
+    "name": "California Grants Portal CSV",
+    "kind": "csv",
+    "url": "https://data.ca.gov/dataset/e1b1c799-cdd4-4219-af6d-93b79747fffb/resource/111c8c88-21f6-453c-ae2c-b4785a0624f5/download/california-grants-portal-data.csv",
+    "enabled": true,
+    "jurisdiction": "California",
+    "notes": "Primary live CSV feed from the California Grants Portal.",
+    "last_run_at": null,
+    "last_status": null,
+    "last_error": null
+  },
+  "ca-grants-awards-json": {
+    "source_id": "ca-grants-awards-json",
+    "name": "California Grants Awards JSON",
+    "kind": "json",
+    "url": "https://data.ca.gov/api/3/action/datastore_search?resource_id=018f3523-652d-4197-a4a8-a055bfd1544f&limit=1000",
+    "enabled": true,
+    "jurisdiction": "California",
+    "notes": "Secondary API-backed source from CA Open Data.",
+    "last_run_at": null,
+    "last_status": null,
+    "last_error": null
+  }
+}
