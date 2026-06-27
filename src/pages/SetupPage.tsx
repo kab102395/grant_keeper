@@ -1,55 +1,51 @@
 import type { Dispatch, SetStateAction } from "react";
-import type {
-  AppSnapshot,
-  LocalConfig,
-  SetupValidation,
-  StartupState,
-  WorkspaceBootstrapContract,
-} from "../lib/types";
 import type { SetupForm } from "../lib/shell";
-import { summarizeSetup } from "../lib/shell";
 
 export function SetupPage({
   setupForm,
   setSetupForm,
   saveSetup,
+  requestPasswordReset,
   useDevProfile,
-  setupComplete,
-  snapshot,
-  config,
-  validation,
-  startupState,
   canSaveSetup,
   canStartDevProfile,
   autosaveStatus,
   autosaveAt,
+  setupSupportStatus,
+  setupSupportMessage,
 }: {
   setupForm: SetupForm;
   setSetupForm: Dispatch<SetStateAction<SetupForm>>;
   saveSetup: () => Promise<void>;
+  requestPasswordReset: () => Promise<void>;
   useDevProfile: () => Promise<void>;
-  setupComplete: boolean;
-  snapshot: AppSnapshot | null;
-  config: LocalConfig | null;
-  validation: SetupValidation | null;
-  startupState: StartupState;
   canSaveSetup: boolean;
   canStartDevProfile: boolean;
   autosaveStatus: "idle" | "saving" | "saved" | "error";
   autosaveAt: string | null;
+  setupSupportStatus: "idle" | "saving" | "saved" | "error";
+  setupSupportMessage: string | null;
 }) {
-  const setupSummary = summarizeSetup(validation);
-  const bootstrap = snapshot?.workspace_bootstrap;
-  const bootstrapScreens = bootstrap?.screens ?? [];
+  const workspaceCodeHint =
+    setupForm.mode === "create_account"
+      ? "Optional custom slug for the new workspace. Leave it blank to generate one automatically."
+      : "Enter the workspace code for an existing workspace you already belong to.";
+  const inviteTokenHint =
+    "Enter the one-time invite token shared by the organization owner.";
+  const submitLabel =
+    setupForm.mode === "create_account"
+      ? "Create account and workspace"
+      : setupForm.mode === "sign_in"
+        ? "Sign in to workspace"
+        : "Create account and join workspace";
 
   return (
     <div className="surface-stack">
       <div className="surface-copy">
         <h3>Create or join a workspace</h3>
         <p>
-          Choose whether this person is creating a new account, signing into an
-          existing account, or joining an existing workspace. The app handles
-          Firebase sign-in and attaches the session to the correct organization.
+          Enter the work email and workspace details for this nonprofit. Grant
+          Keeper handles the account and workspace connection automatically.
         </p>
       </div>
 
@@ -77,32 +73,6 @@ export function SetupPage({
         >
           Join workspace
         </button>
-      </div>
-
-      <div className="panel-block">
-        <div className="eyebrow">Workspace bootstrap contract</div>
-        <div className="info-row">
-          <span>Join model: {formatJoinModel(bootstrap)}</span>
-          <span>Required inputs: {formatRequiredInputs(bootstrap)}</span>
-          <span>Identity boundary: {formatIdentityBoundary(bootstrap)}</span>
-        </div>
-        <div className="surface-grid">
-          {bootstrapScreens.map((step, index) => (
-            <article key={step.id} className="panel-card">
-              <div className="eyebrow">Step {index + 1}</div>
-              <h4>{step.title}</h4>
-              <p>{step.description}</p>
-            </article>
-          ))}
-        </div>
-      </div>
-
-      <div className="info-row">
-        <span>Startup state: {startupState.split("_").join(" ")}</span>
-        <span>Session mode: {setupSummary.mode}</span>
-        <span>Workspace ready: {setupSummary.workspaceReady}</span>
-        <span>Dev profile ready: {setupSummary.devProfileReady}</span>
-        <span>Active workspace: {snapshot?.organization_uid ?? config?.organization_uid ?? "not set"}</span>
       </div>
 
       <div className="form-grid">
@@ -139,29 +109,44 @@ export function SetupPage({
             placeholder="Minimum Firebase password"
           />
         </label>
-        <label>
-          Workspace code
-          <span className="field-hint">
-            {setupForm.mode === "create_account"
-              ? "Optional custom slug for the new workspace"
-              : "Required to open or join an existing workspace"}
-          </span>
-          <input
-            value={setupForm.workspace_code}
-            onChange={(event) => setSetupForm({ ...setupForm, workspace_code: event.target.value })}
-            placeholder="community-action-network"
-          />
-        </label>
+        {setupForm.mode !== "join_workspace" ? (
+          <label>
+            Workspace code
+            <span className="field-hint">{workspaceCodeHint}</span>
+            <input
+              value={setupForm.workspace_code}
+              onChange={(event) => setSetupForm({ ...setupForm, workspace_code: event.target.value })}
+              placeholder="community-action-network"
+            />
+          </label>
+        ) : null}
+        {setupForm.mode === "join_workspace" ? (
+          <label>
+            Invite token
+            <span className="field-hint">{inviteTokenHint}</span>
+            <input
+              value={setupForm.invite_token}
+              onChange={(event) => setSetupForm({ ...setupForm, invite_token: event.target.value })}
+              placeholder="gk-..."
+            />
+          </label>
+        ) : null}
       </div>
 
       <div className="surface-actions">
         <button type="button" className="primary" onClick={() => void saveSetup()} disabled={!canSaveSetup}>
-          {setupForm.mode === "create_account"
-            ? "Create account and workspace"
-            : setupForm.mode === "sign_in"
-              ? "Sign in to workspace"
-              : "Create account and join workspace"}
+          {submitLabel}
         </button>
+        {setupForm.mode !== "create_account" ? (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void requestPasswordReset()}
+            disabled={setupSupportStatus === "saving"}
+          >
+            {setupSupportStatus === "saving" ? "Sending reset..." : "Forgot password?"}
+          </button>
+        ) : null}
         <button type="button" className="secondary" onClick={() => void useDevProfile()} disabled={!canStartDevProfile}>
           Start local dev profile
         </button>
@@ -176,39 +161,20 @@ export function SetupPage({
       </div>
 
       <p className="field-hint">
-        Anthropic key and AI draft mode now live in the organization settings
-        surface so onboarding stays focused on identity and workspace access.
+        Anthropic key and AI draft mode live in organization settings after sign-in so onboarding stays focused on account access.
       </p>
-
-      <div className="info-row">
-        <span>Setup complete: {setupComplete ? "yes" : "no"}</span>
-        <span>Validation: {setupSummary.ready}</span>
-        {setupSummary.missing ? <span>Missing: {setupSummary.missing}</span> : null}
-      </div>
+      {setupSupportMessage ? (
+        <p className="field-hint">
+          {setupSupportMessage}
+        </p>
+      ) : null}
+      {setupForm.mode !== "create_account" ? (
+        <p className="field-hint">
+          {setupForm.mode === "join_workspace"
+            ? "Use the invite token from the organization owner. Password resets are sent to the work email above."
+            : "Use the workspace code for a workspace you already belong to. Password resets are sent to the work email above."}
+        </p>
+      ) : null}
     </div>
   );
-}
-
-function formatJoinModel(bootstrap: WorkspaceBootstrapContract | undefined) {
-  if (!bootstrap) {
-    return "self serve account and workspace";
-  }
-  return bootstrap.join_model.split("_").join(" ");
-}
-
-function formatRequiredInputs(bootstrap: WorkspaceBootstrapContract | undefined) {
-  if (!bootstrap) {
-    return "email, password, organization name or workspace code";
-  }
-  return bootstrap.required_inputs.map((value) => value.split("_").join(" ")).join(", ");
-}
-
-function formatIdentityBoundary(bootstrap: WorkspaceBootstrapContract | undefined) {
-  if (!bootstrap) {
-    return "firebase_uid -> organization_uid";
-  }
-  if (!bootstrap.identity_boundary) {
-    return "firebase_uid -> organization_uid";
-  }
-  return `${bootstrap.identity_boundary.session_key} -> ${bootstrap.identity_boundary.data_key}`;
 }

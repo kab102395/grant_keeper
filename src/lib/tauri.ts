@@ -15,6 +15,7 @@ import type {
   OrganizationRecord,
   SetupValidation,
   WorkspaceCreateRequest,
+  WorkspaceInviteRecord,
   WorkspaceJoinRequest,
   WatchlistEntry,
 } from "./types";
@@ -30,11 +31,13 @@ export const api = {
   startDevProfile: () => invoke<FirebaseSession>("start_dev_profile"),
   createWorkspaceAccount: (request: WorkspaceCreateRequest) =>
     invoke<FirebaseSession>("create_workspace_account", { request }),
+  createWorkspaceInvite: () => invoke<WorkspaceInviteRecord>("create_workspace_invite"),
   signInToWorkspace: (request: WorkspaceJoinRequest) =>
     invoke<FirebaseSession>("sign_in_to_workspace", { request }),
   signUpToJoinWorkspace: (request: WorkspaceJoinRequest) =>
     invoke<FirebaseSession>("sign_up_to_join_workspace", { request }),
   refreshSession: () => invoke<FirebaseSession | null>("refresh_session"),
+  sendPasswordResetEmail: (email: string) => invoke<void>("send_password_reset_email", { email }),
   validateAnthropicApiKey: (apiKey: string) => invoke<void>("validate_anthropic_api_key", { apiKey }),
   clearSession: () => invoke<void>("clear_session"),
   validateSetup: () => invoke<SetupValidation>("validate_setup"),

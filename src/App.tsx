@@ -135,7 +135,9 @@ export default function App() {
     Boolean(data.setupForm.email.trim() && data.setupForm.password.trim()) &&
     (data.setupForm.mode === "create_account"
       ? Boolean(data.setupForm.organization_name.trim())
-      : Boolean(data.setupForm.workspace_code.trim()));
+      : data.setupForm.mode === "sign_in"
+        ? Boolean(data.setupForm.workspace_code.trim())
+        : Boolean(data.setupForm.invite_token.trim()));
   const aiSettingsRequired =
     data.config?.draft_generation_preference === "ai" &&
     !data.config?.anthropic_api_key?.trim();
@@ -242,16 +244,14 @@ export default function App() {
               setupForm={data.setupForm}
               setSetupForm={data.setSetupForm}
               saveSetup={data.saveSetup}
+              requestPasswordReset={data.requestPasswordReset}
               useDevProfile={data.useDevProfile}
-              setupComplete={setupComplete}
-              snapshot={data.snapshot}
-              config={data.config}
-              validation={data.setupValidation}
-              startupState={startupState}
               canSaveSetup={canSubmitSetup}
               canStartDevProfile={true}
               autosaveStatus={data.setupAutosaveStatus}
               autosaveAt={data.setupAutosavedAt}
+              setupSupportStatus={data.setupSupportStatus}
+              setupSupportMessage={data.setupSupportMessage}
             />
           ) : null}
 
@@ -328,6 +328,10 @@ export default function App() {
               orgUid={data.snapshot?.organization_uid ?? data.config?.organization_uid ?? data.snapshot?.current_org_uid ?? null}
               config={data.config}
               onSave={data.saveOrganizationProfile}
+              onCreateWorkspaceInvite={data.createWorkspaceInvite}
+              workspaceInvite={data.workspaceInvite}
+              workspaceInviteStatus={data.workspaceInviteStatus}
+              workspaceInviteMessage={data.workspaceInviteMessage}
               aiSettingsDraft={data.aiSettingsDraft}
               setAiSettingsDraft={data.setAiSettingsDraft}
               onValidateAiSettings={data.validateAiSettings}

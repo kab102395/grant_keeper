@@ -92,7 +92,22 @@ export type WorkspaceCreateRequest = {
 export type WorkspaceJoinRequest = {
   email: string;
   password: string;
-  workspace_code: string;
+  workspace_code?: string | null;
+  invite_token?: string | null;
+};
+
+export type WorkspaceInviteRecord = {
+  invite_token: string;
+  organization_uid: string;
+  organization_name?: string | null;
+  role: string;
+  created_by_uid: string;
+  created_by_email: string;
+  created_at?: string | null;
+  claimed_by_uid?: string | null;
+  claimed_by_email?: string | null;
+  claimed_at?: string | null;
+  active: boolean;
 };
 
 export type WorkspaceBootstrapStageId = "create_or_join" | "confirm_ready" | "workspace_home";

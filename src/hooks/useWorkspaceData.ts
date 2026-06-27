@@ -12,6 +12,7 @@ import type {
   LocalConfig,
   OrganizationRecord,
   SetupValidation,
+  WorkspaceInviteRecord,
   WatchlistEntry,
 } from "../lib/types";
 import {
@@ -37,6 +38,7 @@ function syncSetupFormFromState(current: SetupForm, nextConfig: LocalConfig, org
     ...current,
     organization_name: organizationName?.trim() ? organizationName : current.organization_name,
     workspace_code: nextConfig.organization_uid ?? current.workspace_code,
+    invite_token: current.invite_token,
   };
 }
 
@@ -63,6 +65,7 @@ function loadSetupFormDraft(): SetupForm {
           : "create_account",
       organization_name: typeof parsed.organization_name === "string" ? parsed.organization_name : "",
       workspace_code: typeof parsed.workspace_code === "string" ? parsed.workspace_code : "",
+      invite_token: typeof parsed.invite_token === "string" ? parsed.invite_token : "",
       email: typeof parsed.email === "string" ? parsed.email : "",
       password: "",
     };
@@ -76,6 +79,7 @@ function serializeSetupFormDraft(form: SetupForm) {
     mode: form.mode,
     organization_name: form.organization_name,
     workspace_code: form.workspace_code,
+    invite_token: form.invite_token,
     email: form.email,
   });
 }
@@ -201,8 +205,13 @@ export type WorkspaceDataResult = {
   healthCheckedAt: string | null;
   setupAutosaveStatus: "idle" | "saving" | "saved" | "error";
   setupAutosavedAt: string | null;
+  setupSupportStatus: "idle" | "saving" | "saved" | "error";
+  setupSupportMessage: string | null;
   organizationAutosaveStatus: "idle" | "saving" | "saved" | "error";
   organizationAutosavedAt: string | null;
+  workspaceInvite: WorkspaceInviteRecord | null;
+  workspaceInviteStatus: "idle" | "saving" | "saved" | "error";
+  workspaceInviteMessage: string | null;
   aiSettingsDraft: { anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" };
   aiSettingsStatus: "idle" | "validating" | "saving" | "saved" | "error";
   aiSettingsMessage: string | null;
@@ -216,6 +225,7 @@ export type WorkspaceDataResult = {
   setSelectedGrant: Dispatch<SetStateAction<GrantRecord | null>>;
   setSelectedDraft: Dispatch<SetStateAction<DraftRecord | null>>;
   saveSetup: () => Promise<void>;
+  requestPasswordReset: () => Promise<void>;
   useDevProfile: () => Promise<void>;
   clearSessionAndReload: () => Promise<void>;
   clearError: () => void;
@@ -225,6 +235,7 @@ export type WorkspaceDataResult = {
   openGrantDetail: (grant: Pick<GrantRecord, "portal_id">, nextSurface?: Surface) => Promise<void>;
   toggleWatchlistEntry: (grant: Pick<GrantRecord, "portal_id">) => Promise<void>;
   saveOrganizationProfile: () => Promise<void>;
+  createWorkspaceInvite: () => Promise<void>;
   validateAiSettings: () => Promise<void>;
   saveAiSettings: () => Promise<void>;
   generateDraftFromGrant: (grant: Pick<GrantRecord, "portal_id">, nextSurface?: Surface) => Promise<void>;
@@ -262,6 +273,9 @@ export function useWorkspaceData({
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
   const [organizationForm, setOrganizationForm] = useState<OrganizationRecord | null>(null);
   const [programsText, setProgramsText] = useState("");
+  const [workspaceInvite, setWorkspaceInvite] = useState<WorkspaceInviteRecord | null>(null);
+  const [workspaceInviteStatus, setWorkspaceInviteStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [workspaceInviteMessage, setWorkspaceInviteMessage] = useState<string | null>(null);
   const [aiSettingsDraft, setAiSettingsDraft] = useState<{
     anthropicApiKey: string;
     draftPreference: "local_scaffold" | "ai";
@@ -274,6 +288,8 @@ export function useWorkspaceData({
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [setupForm, setSetupForm] = useState<SetupForm>(() => loadSetupFormDraft());
   const [setupValidation, setSetupValidation] = useState<SetupValidation | null>(null);
+  const [setupSupportStatus, setSetupSupportStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [setupSupportMessage, setSetupSupportMessage] = useState<string | null>(null);
   const [discoveryFilters, setDiscoveryFilters] = useState<DiscoveryFilters>({
     query: "",
     status: "open",
@@ -717,6 +733,8 @@ export function useWorkspaceData({
     try {
       setRefreshing(true);
       clearError();
+      setSetupSupportStatus("idle");
+      setSetupSupportMessage(null);
 
       if (!setupForm.email.trim()) {
         throw new Error("Enter a work email before continuing.");
@@ -745,13 +763,13 @@ export function useWorkspaceData({
           workspace_code: setupForm.workspace_code.trim(),
         });
       } else {
-        if (!setupForm.workspace_code.trim()) {
-          throw new Error("Enter a workspace code before continuing.");
+        if (!setupForm.invite_token.trim()) {
+          throw new Error("Enter an invite token before continuing.");
         }
         await api.signUpToJoinWorkspace({
           email: setupForm.email.trim(),
           password: setupForm.password,
-          workspace_code: setupForm.workspace_code.trim(),
+          invite_token: setupForm.invite_token.trim(),
         });
       }
       const nextConfig = await api.updateLocalConfig({
@@ -777,6 +795,22 @@ export function useWorkspaceData({
       await handleWorkspaceError(err, { fallbackToSetup: true });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function requestPasswordReset() {
+    try {
+      clearError();
+      setSetupSupportStatus("saving");
+      if (!setupForm.email.trim()) {
+        throw new Error("Enter the work email first so Grant Keeper knows where to send the reset link.");
+      }
+      await api.sendPasswordResetEmail(setupForm.email.trim());
+      setSetupSupportStatus("saved");
+      setSetupSupportMessage(`Password reset email sent to ${setupForm.email.trim()}.`);
+    } catch (err) {
+      setSetupSupportStatus("error");
+      setSetupSupportMessage(classifyAppError(err).message);
     }
   }
 
@@ -992,6 +1026,20 @@ export function useWorkspaceData({
       await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function createWorkspaceInvite() {
+    try {
+      setWorkspaceInviteStatus("saving");
+      setWorkspaceInviteMessage(null);
+      const invite = await api.createWorkspaceInvite();
+      setWorkspaceInvite(invite);
+      setWorkspaceInviteStatus("saved");
+      setWorkspaceInviteMessage(`Invite token ready for ${invite.organization_name ?? invite.organization_uid}. This token can be used once.`);
+    } catch (err) {
+      setWorkspaceInviteStatus("error");
+      setWorkspaceInviteMessage(classifyAppError(err).message);
     }
   }
 
@@ -1283,8 +1331,13 @@ export function useWorkspaceData({
     healthCheckedAt,
     setupAutosaveStatus: setupAutosave.status,
     setupAutosavedAt: setupAutosave.savedAt,
+    setupSupportStatus,
+    setupSupportMessage,
     organizationAutosaveStatus: organizationAutosave.status,
     organizationAutosavedAt: organizationAutosave.savedAt,
+    workspaceInvite,
+    workspaceInviteStatus,
+    workspaceInviteMessage,
     aiSettingsDraft,
     aiSettingsStatus,
     aiSettingsMessage,
@@ -1296,6 +1349,7 @@ export function useWorkspaceData({
     setSelectedGrant,
     setSelectedDraft,
     saveSetup,
+    requestPasswordReset,
     useDevProfile,
     clearSessionAndReload,
     clearError,
@@ -1305,6 +1359,7 @@ export function useWorkspaceData({
     openGrantDetail,
     toggleWatchlistEntry,
     saveOrganizationProfile,
+    createWorkspaceInvite,
     validateAiSettings,
     saveAiSettings,
     generateDraftFromGrant,

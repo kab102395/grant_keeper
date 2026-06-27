@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import type { LocalConfig, OrganizationRecord } from "../lib/types";
+import type { LocalConfig, OrganizationRecord, WorkspaceInviteRecord } from "../lib/types";
 import { formatTimestamp, orgCompletenessScore, orgMissingFields } from "../lib/shell";
 
 const ORG_FIELD_LABELS: Record<keyof OrganizationRecord, string> = {
@@ -65,6 +65,10 @@ export function OrganizationPage({
   orgUid,
   config,
   onSave,
+  onCreateWorkspaceInvite,
+  workspaceInvite,
+  workspaceInviteStatus,
+  workspaceInviteMessage,
   aiSettingsDraft,
   setAiSettingsDraft,
   onValidateAiSettings,
@@ -82,6 +86,10 @@ export function OrganizationPage({
   orgUid: string | null;
   config: LocalConfig | null;
   onSave: () => Promise<void>;
+  onCreateWorkspaceInvite: () => Promise<void>;
+  workspaceInvite: WorkspaceInviteRecord | null;
+  workspaceInviteStatus: "idle" | "saving" | "saved" | "error";
+  workspaceInviteMessage: string | null;
   aiSettingsDraft: { anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" };
   setAiSettingsDraft: Dispatch<
     SetStateAction<{ anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" }>
@@ -248,6 +256,43 @@ export function OrganizationPage({
               Save organization
             </button>
           </div>
+
+          <section className="panel-block panel-block-soft ai-settings-panel">
+            <div className="detail-header">
+              <div>
+                <p className="eyebrow">Workspace invites</p>
+                <h4>Generate a one-time join token</h4>
+              </div>
+              <span className="status-pill">{workspaceInvite ? "Invite ready" : "Owner action"}</span>
+            </div>
+
+            <p className="muted">
+              Share the generated token with a second writer. New users join with this token instead of a raw workspace code.
+            </p>
+
+            <div className="surface-actions org-actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void onCreateWorkspaceInvite()}
+                disabled={workspaceInviteStatus === "saving"}
+              >
+                {workspaceInviteStatus === "saving" ? "Generating..." : "Generate invite token"}
+              </button>
+            </div>
+
+            <div className="form-grid">
+              <label className="grid-span-2">
+                Current invite token
+                <input value={workspaceInvite?.invite_token ?? ""} readOnly placeholder="Generate a token to invite another writer" />
+              </label>
+            </div>
+
+            <div className="info-row">
+              <span>Status: {workspaceInviteStatus}</span>
+              <span>{workspaceInviteMessage ?? "Only workspace owners can generate join tokens."}</span>
+            </div>
+          </section>
 
           <section className="panel-block panel-block-soft ai-settings-panel">
             <div className="detail-header">

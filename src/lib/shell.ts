@@ -54,6 +54,7 @@ export type SetupForm = {
   mode: "create_account" | "sign_in" | "join_workspace";
   organization_name: string;
   workspace_code: string;
+  invite_token: string;
   email: string;
   password: string;
 };
@@ -72,6 +73,7 @@ export const EMPTY_SETUP: SetupForm = {
   mode: "create_account",
   organization_name: "",
   workspace_code: "",
+  invite_token: "",
   email: "",
   password: "",
 };
