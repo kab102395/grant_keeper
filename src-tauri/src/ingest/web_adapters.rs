@@ -44,7 +44,13 @@ pub fn spec_for_source(source: &GrantSourceRecord) -> WebpageAdapterSpec {
                 "funding notices",
                 "application deadline",
             ],
-            noise_terms: &["subscribe", "news", "glossary", "faq", "statistics dashboard"],
+            noise_terms: &[
+                "subscribe",
+                "news",
+                "glossary",
+                "faq",
+                "statistics dashboard",
+            ],
             link_selectors: &[
                 "main a",
                 "main li a",
@@ -86,7 +92,13 @@ pub fn spec_for_source(source: &GrantSourceRecord) -> WebpageAdapterSpec {
                 "grant program",
                 "funding available",
             ],
-            noise_terms: &["news", "staff directory", "project viewer", "meetings", "notices"],
+            noise_terms: &[
+                "news",
+                "staff directory",
+                "project viewer",
+                "meetings",
+                "notices",
+            ],
             link_selectors: &[
                 "main a",
                 "main li a",
@@ -196,7 +208,10 @@ pub fn spec_for_source(source: &GrantSourceRecord) -> WebpageAdapterSpec {
             category_hints: &[
                 ("housing", "Housing, Community and Economic Development"),
                 ("homeless", "Housing, Community and Economic Development"),
-                ("community development", "Housing, Community and Economic Development"),
+                (
+                    "community development",
+                    "Housing, Community and Economic Development",
+                ),
                 ("tribal", "Housing, Community and Economic Development"),
             ],
             supports_rich_sections: true,
@@ -211,7 +226,11 @@ pub fn spec_for_source(source: &GrantSourceRecord) -> WebpageAdapterSpec {
                 "application open",
                 "concept proposals due",
             ],
-            noise_terms: &["create an account", "goats", "grant opportunity and administration and tracking system"],
+            noise_terms: &[
+                "create an account",
+                "goats",
+                "grant opportunity and administration and tracking system",
+            ],
             link_selectors: &[
                 "main a",
                 "main li a",
@@ -498,7 +517,10 @@ mod tests {
 
     #[test]
     fn grants_portal_maps_to_specific_adapter() {
-        let spec = spec_for_source(&source("ca-grants-portal-homepage", Some("ca-grants-portal")));
+        let spec = spec_for_source(&source(
+            "ca-grants-portal-homepage",
+            Some("ca-grants-portal"),
+        ));
         assert_eq!(spec.kind, WebpageAdapterKind::CaliforniaGrantsPortal);
         assert!(spec.supports_rich_sections);
         assert!(spec.opportunity_terms.contains(&"recently posted"));
@@ -508,13 +530,21 @@ mod tests {
     fn cdfa_maps_to_specific_adapter() {
         let spec = spec_for_source(&source("ca-cdfa-grants", Some("cdfa-grants")));
         assert_eq!(spec.kind, WebpageAdapterKind::Cdfa);
-        assert!(spec.opportunity_terms.contains(&"catalogue of grant programs"));
-        assert!(spec.category_hints.iter().any(|(needle, _)| *needle == "agriculture"));
+        assert!(spec
+            .opportunity_terms
+            .contains(&"catalogue of grant programs"));
+        assert!(spec
+            .category_hints
+            .iter()
+            .any(|(needle, _)| *needle == "agriculture"));
     }
 
     #[test]
     fn caloes_maps_to_specific_adapter() {
-        let spec = spec_for_source(&source("ca-caloes-grant-announcements", Some("caloes-grants")));
+        let spec = spec_for_source(&source(
+            "ca-caloes-grant-announcements",
+            Some("caloes-grants"),
+        ));
         assert_eq!(spec.kind, WebpageAdapterKind::CalOes);
         assert!(spec.opportunity_terms.contains(&"search for grants"));
     }
@@ -523,7 +553,10 @@ mod tests {
     fn cnra_maps_to_specific_adapter() {
         let spec = spec_for_source(&source("ca-cnra-grants", Some("cnra-grants")));
         assert_eq!(spec.kind, WebpageAdapterKind::Cnra);
-        assert!(spec.category_hints.iter().any(|(needle, _)| *needle == "conservation"));
+        assert!(spec
+            .category_hints
+            .iter()
+            .any(|(needle, _)| *needle == "conservation"));
     }
 
     #[test]

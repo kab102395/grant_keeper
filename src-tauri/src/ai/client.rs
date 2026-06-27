@@ -86,7 +86,8 @@ impl AnthropicClient {
         system_prompt: &str,
         prompt: &str,
     ) -> Result<SectionGeneration, AiError> {
-        let MessagesResponse { content, usage } = self.send_message(system_prompt, prompt, 1200).await?;
+        let MessagesResponse { content, usage } =
+            self.send_message(system_prompt, prompt, 1200).await?;
         let text = content
             .into_iter()
             .find_map(|item| item.text)

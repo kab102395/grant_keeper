@@ -168,7 +168,10 @@ mod tests {
             profile.status,
             SourceAdapterStatus::PendingAdapter(_)
         ));
-        assert_eq!(profile.status.health_status(), GrantSourceHealthStatus::PendingAdapter);
+        assert_eq!(
+            profile.status.health_status(),
+            GrantSourceHealthStatus::PendingAdapter
+        );
     }
 
     #[test]
@@ -177,14 +180,20 @@ mod tests {
         source.last_error = Some("403 Forbidden".to_string());
         let profile = profile_for(&source);
         assert!(matches!(profile.status, SourceAdapterStatus::Blocked(_)));
-        assert_eq!(profile.status.health_status(), GrantSourceHealthStatus::Blocked);
+        assert_eq!(
+            profile.status.health_status(),
+            GrantSourceHealthStatus::Blocked
+        );
     }
 
     #[test]
     fn csv_sources_auto_sync() {
         let profile = profile_for(&source("ca-grants-offered", GrantSourceKind::Csv));
         assert!(profile.status.is_auto());
-        assert!(source_requires_auto_sync(&source("ca-grants-offered", GrantSourceKind::Csv)));
+        assert!(source_requires_auto_sync(&source(
+            "ca-grants-offered",
+            GrantSourceKind::Csv
+        )));
         assert_eq!(profile.low_yield_threshold, 0);
     }
 }

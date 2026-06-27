@@ -669,24 +669,70 @@ fn parse_grants_from_webpage_html(
 
     let parser_output = match spec.kind {
         web_adapters::WebpageAdapterKind::CaliforniaGrantsPortal => {
-            parse_california_grants_portal_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context)
+            parse_california_grants_portal_page(
+                &spec,
+                source,
+                base_url,
+                &document,
+                &page_title,
+                &page_description,
+                &page_context,
+            )
         }
-        web_adapters::WebpageAdapterKind::CoastalConservancy => {
-            parse_coastal_conservancy_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context)
-        }
-        web_adapters::WebpageAdapterKind::Hcd => {
-            parse_hcd_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context)
-        }
-        web_adapters::WebpageAdapterKind::CalOes => {
-            parse_caloes_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context)
-        }
-        web_adapters::WebpageAdapterKind::Cnra => {
-            parse_cnra_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context)
-        }
-        web_adapters::WebpageAdapterKind::Calepa => {
-            parse_calepa_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context)
-        }
-        _ => parse_generic_webpage_page(&spec, source, base_url, &document, &page_title, &page_description, &page_context),
+        web_adapters::WebpageAdapterKind::CoastalConservancy => parse_coastal_conservancy_page(
+            &spec,
+            source,
+            base_url,
+            &document,
+            &page_title,
+            &page_description,
+            &page_context,
+        ),
+        web_adapters::WebpageAdapterKind::Hcd => parse_hcd_page(
+            &spec,
+            source,
+            base_url,
+            &document,
+            &page_title,
+            &page_description,
+            &page_context,
+        ),
+        web_adapters::WebpageAdapterKind::CalOes => parse_caloes_page(
+            &spec,
+            source,
+            base_url,
+            &document,
+            &page_title,
+            &page_description,
+            &page_context,
+        ),
+        web_adapters::WebpageAdapterKind::Cnra => parse_cnra_page(
+            &spec,
+            source,
+            base_url,
+            &document,
+            &page_title,
+            &page_description,
+            &page_context,
+        ),
+        web_adapters::WebpageAdapterKind::Calepa => parse_calepa_page(
+            &spec,
+            source,
+            base_url,
+            &document,
+            &page_title,
+            &page_description,
+            &page_context,
+        ),
+        _ => parse_generic_webpage_page(
+            &spec,
+            source,
+            base_url,
+            &document,
+            &page_title,
+            &page_description,
+            &page_context,
+        ),
     };
     parser_output
 }
@@ -943,16 +989,11 @@ fn parse_webpage_links_with_selectors(
 
             let anchor_text = normalize_whitespace(&anchor.text().collect::<Vec<_>>().join(" "))
                 .unwrap_or_default();
-            if !looks_like_grant_link(
-                &anchor_text,
-                &resolved,
-                page_title,
-                page_description,
-                spec,
-            ) {
+            if !looks_like_grant_link(&anchor_text, &resolved, page_title, page_description, spec) {
                 continue;
             }
-            let portal_id = stable_web_portal_id(&source.source_id, resolved.as_str(), &anchor_text);
+            let portal_id =
+                stable_web_portal_id(&source.source_id, resolved.as_str(), &anchor_text);
             if !seen.insert(portal_id.clone()) {
                 continue;
             }
@@ -1126,7 +1167,9 @@ fn page_looks_like_grant_opportunity(
 ) -> bool {
     let text = format!("{page_title} {page_description} {page_context}").to_ascii_lowercase();
     let source_name = source.name.to_ascii_lowercase();
-    spec.opportunity_terms.iter().any(|term| text.contains(term))
+    spec.opportunity_terms
+        .iter()
+        .any(|term| text.contains(term))
         && !source_name.contains("news")
         && !source_name.contains("homepage")
 }
