@@ -68,10 +68,31 @@ export type EmailPasswordSignIn = {
   password: string;
 };
 
-export type WorkspaceStartRequest = {
+export type EmailPasswordSignUp = {
   email: string;
+  password: string;
+};
+
+export type AppCommandError = {
+  code?: string | null;
+  message: string;
+  detail?: string | null;
+  retryable?: boolean | null;
+  requires_reauth?: boolean | null;
+  service?: string | null;
+};
+
+export type WorkspaceCreateRequest = {
+  email: string;
+  password: string;
   organization_name: string;
   workspace_code?: string | null;
+};
+
+export type WorkspaceJoinRequest = {
+  email: string;
+  password: string;
+  workspace_code: string;
 };
 
 export type WorkspaceBootstrapStageId = "create_or_join" | "confirm_ready" | "workspace_home";
@@ -83,8 +104,8 @@ export type WorkspaceBootstrapStage = {
 };
 
 export type WorkspaceBootstrapContract = {
-  join_model: "admin_created_workspace_with_optional_code";
-  required_inputs: Array<"organization_name" | "email">;
+  join_model: "self_serve_account_and_workspace";
+  required_inputs: Array<"email" | "password" | "organization_name_or_workspace_code">;
   identity_boundary: {
     session_key: "firebase_uid";
     data_key: "organization_uid";

@@ -1,4 +1,5 @@
 import type {
+  AppCommandError,
   DraftRecord,
   GrantRecord,
   GrantSummary,
@@ -50,9 +51,9 @@ export type DiscoveryFilters = {
 };
 
 export type SetupForm = {
+  mode: "create_account" | "sign_in" | "join_workspace";
   organization_name: string;
   workspace_code: string;
-  anthropic_api_key: string;
   email: string;
   password: string;
 };
@@ -68,9 +69,9 @@ export const SURFACES: Array<{ id: Surface; label: string; description: string }
 ];
 
 export const EMPTY_SETUP: SetupForm = {
+  mode: "create_account",
   organization_name: "",
   workspace_code: "",
-  anthropic_api_key: "",
   email: "",
   password: "",
 };
@@ -92,9 +93,79 @@ export const DEFAULT_DISCOVERY_FILTERS: DiscoveryFilters = {
 };
 
 export function toMessage(value: unknown): string {
+  const parsedError = parseAppCommandError(value);
+  if (parsedError) return parsedError.message;
   if (value instanceof Error) return value.message;
   if (typeof value === "string") return value;
   return "Unexpected error";
+}
+
+export function parseAppCommandError(value: unknown): AppCommandError | null {
+  if (isObject(value) && typeof value.message === "string") {
+    return value as AppCommandError;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (isObject(parsed) && typeof parsed.message === "string") {
+      return parsed as AppCommandError;
+    }
+  } catch {
+    // fall back to legacy string classification
+  }
+
+  return null;
+}
+
+export function classifyAppError(value: unknown): {
+  kind: "reauth" | "service_outage" | "generic";
+  title: string;
+  message: string;
+} {
+  const parsed = parseAppCommandError(value);
+  const message = parsed?.message ?? toMessage(value);
+  const normalized = `${parsed?.code ?? ""} ${parsed?.service ?? ""} ${parsed?.detail ?? ""} ${message}`.toLowerCase();
+
+  if (
+    parsed?.requires_reauth ||
+    normalized.includes("invalid_grant") ||
+    normalized.includes("token expired") ||
+    normalized.includes("invalid refresh token") ||
+    normalized.includes("missing active session") ||
+    normalized.includes("missing refresh token")
+  ) {
+    return {
+      kind: "reauth",
+      title: "Session expired",
+      message: "Your session expired or is no longer valid. Sign in again to reopen the workspace.",
+    };
+  }
+
+  if (
+    parsed?.retryable ||
+    normalized.includes("rtdb request failed") ||
+    normalized.includes("service account auth failed") ||
+    normalized.includes("firebase auth request failed") ||
+    normalized.includes("anthropic request failed") ||
+    normalized.includes("temporarily unavailable") ||
+    normalized.includes("timeout")
+  ) {
+    return {
+      kind: "service_outage",
+      title: "Service unavailable",
+      message: "Grant Keeper could not reach one of its backend services. Your current screen state is still here. Retry in a moment.",
+    };
+  }
+
+  return {
+    kind: "generic",
+    title: "Action failed",
+    message,
+  };
 }
 
 export function isObject(value: unknown): value is Record<string, unknown> {

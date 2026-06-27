@@ -131,6 +131,16 @@ export default function App() {
     data.drafts.length === 0 &&
     !firstRunDismissed;
 
+  const canSubmitSetup =
+    Boolean(data.setupForm.email.trim() && data.setupForm.password.trim()) &&
+    (data.setupForm.mode === "create_account"
+      ? Boolean(data.setupForm.organization_name.trim())
+      : Boolean(data.setupForm.workspace_code.trim()));
+  const aiSettingsRequired =
+    data.config?.draft_generation_preference === "ai" &&
+    !data.config?.anthropic_api_key?.trim();
+  const openAiSettings = () => navState.navigate(createWorkspaceLocation("organization"));
+
   useEffect(() => {
     if (!data.snapshot) {
       return;
@@ -192,7 +202,24 @@ export default function App() {
           </>
         </PageHeader>
 
-        {data.error ? <div className="error-banner main-error-banner">{data.error}</div> : null}
+        {data.error ? (
+          <div className="error-banner main-error-banner">
+            <div>
+              {data.recoveryTitle ? <strong>{data.recoveryTitle}</strong> : null}
+              <p>{data.error}</p>
+            </div>
+            <div className="banner-actions">
+              {data.recoveryAction ? (
+                <button type="button" className="secondary" onClick={() => void data.recoverFromError()}>
+                  {data.recoveryAction === "sign_in" ? "Go to sign in" : "Retry"}
+                </button>
+              ) : null}
+              <button type="button" className="ghost" onClick={data.clearError}>
+                Dismiss
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div className="page-body">
           {navState.visible.surface === "grant" ? (
@@ -203,6 +230,8 @@ export default function App() {
               onBack={navState.goBack}
               onToggleWatchlist={data.toggleWatchlistEntry}
               onCreateDraft={data.generateDraftFromGrant}
+              aiSettingsRequired={Boolean(aiSettingsRequired)}
+              onOpenAiSettings={openAiSettings}
               canWriteOrg={Boolean(data.snapshot?.session.signed_in && data.snapshot?.organization_uid)}
               writeDisabledReason="Open a workspace session to save watchlist entries or generate drafts."
             />
@@ -219,7 +248,7 @@ export default function App() {
               config={data.config}
               validation={data.setupValidation}
               startupState={startupState}
-              canSaveSetup={Boolean(data.setupForm.organization_name.trim() && data.setupForm.email.trim())}
+              canSaveSetup={canSubmitSetup}
               canStartDevProfile={true}
               autosaveStatus={data.setupAutosaveStatus}
               autosaveAt={data.setupAutosavedAt}
@@ -232,7 +261,9 @@ export default function App() {
                 organization={data.organization}
                 hasWatchlist={data.watchlist.length > 0}
                 hasDrafts={data.drafts.length > 0}
+                aiSettingsRequired={Boolean(aiSettingsRequired)}
                 onNavigate={(surface) => navState.navigate(createWorkspaceLocation(surface))}
+                onOpenAiSettings={openAiSettings}
               />
             ) : (
               <DashboardPage
@@ -247,7 +278,9 @@ export default function App() {
                 draftCount={summary.drafts}
                 selectedGrant={data.selectedGrant}
                 selectedDraft={data.selectedDraft}
+                aiSettingsRequired={Boolean(aiSettingsRequired)}
                 onOpenSurface={(surface, overrides) => navState.navigate(createWorkspaceLocation(surface, overrides))}
+                onOpenAiSettings={openAiSettings}
               />
             )
           ) : null}
@@ -263,6 +296,8 @@ export default function App() {
               onSelectGrant={(grant) => data.openGrantDetail(grant, "grant")}
               onToggleWatchlist={data.toggleWatchlistEntry}
               onCreateDraft={data.generateDraftFromGrant}
+              aiSettingsRequired={Boolean(aiSettingsRequired)}
+              onOpenAiSettings={openAiSettings}
               canWriteOrg={Boolean(data.snapshot?.session.signed_in && data.snapshot?.organization_uid)}
               writeDisabledReason="Open a workspace session to save watchlist entries or generate drafts."
             />
@@ -276,6 +311,8 @@ export default function App() {
               onRemove={data.toggleWatchlistEntry}
               onViewGrant={(portalId) => data.openGrantDetail({ portal_id: portalId }, "grant")}
               onCreateDraft={data.generateDraftFromGrant}
+              aiSettingsRequired={Boolean(aiSettingsRequired)}
+              onOpenAiSettings={openAiSettings}
               canWriteOrg={Boolean(data.snapshot?.session.signed_in && data.snapshot?.organization_uid)}
               writeDisabledReason="Open a workspace session to save watchlist entries or generate drafts."
             />
@@ -291,6 +328,12 @@ export default function App() {
               orgUid={data.snapshot?.organization_uid ?? data.config?.organization_uid ?? data.snapshot?.current_org_uid ?? null}
               config={data.config}
               onSave={data.saveOrganizationProfile}
+              aiSettingsDraft={data.aiSettingsDraft}
+              setAiSettingsDraft={data.setAiSettingsDraft}
+              onValidateAiSettings={data.validateAiSettings}
+              onSaveAiSettings={data.saveAiSettings}
+              aiSettingsStatus={data.aiSettingsStatus}
+              aiSettingsMessage={data.aiSettingsMessage}
               autosaveStatus={data.organizationAutosaveStatus}
               autosaveAt={data.organizationAutosavedAt}
             />

@@ -4,6 +4,7 @@ import type {
   ConfigUpdate,
   DraftRecord,
   EmailPasswordSignIn,
+  EmailPasswordSignUp,
   FirebaseSession,
   GrantIngestReport,
   GrantRecord,
@@ -13,7 +14,8 @@ import type {
   LocalConfig,
   OrganizationRecord,
   SetupValidation,
-  WorkspaceStartRequest,
+  WorkspaceCreateRequest,
+  WorkspaceJoinRequest,
   WatchlistEntry,
 } from "./types";
 
@@ -23,10 +25,17 @@ export const api = {
   updateLocalConfig: (update: ConfigUpdate) => invoke<LocalConfig>("update_local_config", { update }),
   signInWithEmailPassword: (request: EmailPasswordSignIn) =>
     invoke<FirebaseSession>("sign_in_with_email_password", { request }),
+  signUpWithEmailPassword: (request: EmailPasswordSignUp) =>
+    invoke<FirebaseSession>("sign_up_with_email_password", { request }),
   startDevProfile: () => invoke<FirebaseSession>("start_dev_profile"),
-  startWorkspaceProfile: (request: WorkspaceStartRequest) =>
-    invoke<FirebaseSession>("start_workspace_profile", { request }),
+  createWorkspaceAccount: (request: WorkspaceCreateRequest) =>
+    invoke<FirebaseSession>("create_workspace_account", { request }),
+  signInToWorkspace: (request: WorkspaceJoinRequest) =>
+    invoke<FirebaseSession>("sign_in_to_workspace", { request }),
+  signUpToJoinWorkspace: (request: WorkspaceJoinRequest) =>
+    invoke<FirebaseSession>("sign_up_to_join_workspace", { request }),
   refreshSession: () => invoke<FirebaseSession | null>("refresh_session"),
+  validateAnthropicApiKey: (apiKey: string) => invoke<void>("validate_anthropic_api_key", { apiKey }),
   clearSession: () => invoke<void>("clear_session"),
   validateSetup: () => invoke<SetupValidation>("validate_setup"),
   listGrants: () => invoke<GrantRecord[]>("list_grants"),

@@ -47,10 +47,36 @@ export function SetupPage({
       <div className="surface-copy">
         <h3>Create or join a workspace</h3>
         <p>
-          Enter your organization and work email. The app will create a workspace
-          for your team or attach you to an existing one, keep the data under one
-          organization, and handle the backend connection automatically.
+          Choose whether this person is creating a new account, signing into an
+          existing account, or joining an existing workspace. The app handles
+          Firebase sign-in and attaches the session to the correct organization.
         </p>
+      </div>
+
+      <div className="surface-actions">
+        <button
+          type="button"
+          className={setupForm.mode === "create_account" ? "primary" : "secondary"}
+          onClick={() =>
+            setSetupForm({ ...setupForm, mode: "create_account", workspace_code: setupForm.workspace_code })
+          }
+        >
+          Create account
+        </button>
+        <button
+          type="button"
+          className={setupForm.mode === "sign_in" ? "primary" : "secondary"}
+          onClick={() => setSetupForm({ ...setupForm, mode: "sign_in" })}
+        >
+          Sign in
+        </button>
+        <button
+          type="button"
+          className={setupForm.mode === "join_workspace" ? "primary" : "secondary"}
+          onClick={() => setSetupForm({ ...setupForm, mode: "join_workspace" })}
+        >
+          Join workspace
+        </button>
       </div>
 
       <div className="panel-block">
@@ -80,17 +106,23 @@ export function SetupPage({
       </div>
 
       <div className="form-grid">
-        <label>
-          Organization name
-          <input
-            value={setupForm.organization_name}
-            onChange={(event) => setSetupForm({ ...setupForm, organization_name: event.target.value })}
-            placeholder="Community Action Network"
-          />
-        </label>
+        {setupForm.mode === "create_account" ? (
+          <label>
+            Organization name
+            <input
+              value={setupForm.organization_name}
+              onChange={(event) => setSetupForm({ ...setupForm, organization_name: event.target.value })}
+              placeholder="Community Action Network"
+            />
+          </label>
+        ) : null}
         <label>
           Work email
-          <span className="field-hint">Used to create the workspace login for this person</span>
+          <span className="field-hint">
+            {setupForm.mode === "create_account" || setupForm.mode === "join_workspace"
+              ? "Used to create the Firebase login for this person"
+              : "Used to sign in to the existing Firebase account"}
+          </span>
           <input
             value={setupForm.email}
             onChange={(event) => setSetupForm({ ...setupForm, email: event.target.value })}
@@ -98,28 +130,37 @@ export function SetupPage({
           />
         </label>
         <label>
+          Password
+          <span className="field-hint">Stored only for this sign-in or account creation attempt</span>
+          <input
+            type="password"
+            value={setupForm.password}
+            onChange={(event) => setSetupForm({ ...setupForm, password: event.target.value })}
+            placeholder="Minimum Firebase password"
+          />
+        </label>
+        <label>
           Workspace code
-          <span className="field-hint">Leave blank to create a new workspace</span>
+          <span className="field-hint">
+            {setupForm.mode === "create_account"
+              ? "Optional custom slug for the new workspace"
+              : "Required to open or join an existing workspace"}
+          </span>
           <input
             value={setupForm.workspace_code}
             onChange={(event) => setSetupForm({ ...setupForm, workspace_code: event.target.value })}
             placeholder="community-action-network"
           />
         </label>
-        <label>
-          Anthropic API Key
-          <span className="field-hint">Optional — enables AI-assisted draft generation</span>
-          <input
-            value={setupForm.anthropic_api_key}
-            onChange={(event) => setSetupForm({ ...setupForm, anthropic_api_key: event.target.value })}
-            placeholder="sk-ant-..."
-          />
-        </label>
       </div>
 
       <div className="surface-actions">
         <button type="button" className="primary" onClick={() => void saveSetup()} disabled={!canSaveSetup}>
-          Create workspace
+          {setupForm.mode === "create_account"
+            ? "Create account and workspace"
+            : setupForm.mode === "sign_in"
+              ? "Sign in to workspace"
+              : "Create account and join workspace"}
         </button>
         <button type="button" className="secondary" onClick={() => void useDevProfile()} disabled={!canStartDevProfile}>
           Start local dev profile
@@ -127,14 +168,16 @@ export function SetupPage({
       </div>
 
       <div className="info-row">
-        <span>Autosave: {autosaveStatus === "saved" && autosaveAt ? `saved ${new Date(autosaveAt).toLocaleString()}` : autosaveStatus}</span>
+        <span>
+          Autosave:{" "}
+          {autosaveStatus === "saved" && autosaveAt ? `saved ${new Date(autosaveAt).toLocaleString()}` : autosaveStatus}
+        </span>
         <span>Setup fields persist locally while you type</span>
       </div>
 
       <p className="field-hint">
-        This flow creates a workspace session keyed to the organization. The
-        app stores grants, drafts, watchlists, and organization data under that
-        workspace so writers can reopen it without re-entering technical setup.
+        Anthropic key and AI draft mode now live in the organization settings
+        surface so onboarding stays focused on identity and workspace access.
       </p>
 
       <div className="info-row">
@@ -148,14 +191,14 @@ export function SetupPage({
 
 function formatJoinModel(bootstrap: WorkspaceBootstrapContract | undefined) {
   if (!bootstrap) {
-    return "admin created workspace with optional code";
+    return "self serve account and workspace";
   }
   return bootstrap.join_model.split("_").join(" ");
 }
 
 function formatRequiredInputs(bootstrap: WorkspaceBootstrapContract | undefined) {
   if (!bootstrap) {
-    return "organization name, email";
+    return "email, password, organization name or workspace code";
   }
   return bootstrap.required_inputs.map((value) => value.split("_").join(" ")).join(", ");
 }

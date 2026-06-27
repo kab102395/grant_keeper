@@ -15,6 +15,7 @@ import type {
   WatchlistEntry,
 } from "../lib/types";
 import {
+  classifyAppError,
   EMPTY_SETUP,
   normalizeDraftRecords,
   normalizeGrantRecords,
@@ -24,7 +25,6 @@ import {
   serializePrograms,
   exportDraftFileName,
   grantStatusLabel,
-  toMessage,
   type DiscoveryFilters,
   type SetupForm,
 } from "../lib/shell";
@@ -37,7 +37,6 @@ function syncSetupFormFromState(current: SetupForm, nextConfig: LocalConfig, org
     ...current,
     organization_name: organizationName?.trim() ? organizationName : current.organization_name,
     workspace_code: nextConfig.organization_uid ?? current.workspace_code,
-    anthropic_api_key: nextConfig.anthropic_api_key ?? "",
   };
 }
 
@@ -58,11 +57,14 @@ function loadSetupFormDraft(): SetupForm {
     }
     return {
       ...EMPTY_SETUP,
+      mode:
+        parsed.mode === "sign_in" || parsed.mode === "join_workspace" || parsed.mode === "create_account"
+          ? parsed.mode
+          : "create_account",
       organization_name: typeof parsed.organization_name === "string" ? parsed.organization_name : "",
       workspace_code: typeof parsed.workspace_code === "string" ? parsed.workspace_code : "",
-      anthropic_api_key: typeof parsed.anthropic_api_key === "string" ? parsed.anthropic_api_key : "",
       email: typeof parsed.email === "string" ? parsed.email : "",
-      password: typeof parsed.password === "string" ? parsed.password : "",
+      password: "",
     };
   } catch {
     return EMPTY_SETUP;
@@ -70,7 +72,12 @@ function loadSetupFormDraft(): SetupForm {
 }
 
 function serializeSetupFormDraft(form: SetupForm) {
-  return JSON.stringify(form);
+  return JSON.stringify({
+    mode: form.mode,
+    organization_name: form.organization_name,
+    workspace_code: form.workspace_code,
+    email: form.email,
+  });
 }
 
 function serializeOrganizationDraft(form: OrganizationRecord, programsText: string) {
@@ -135,6 +142,9 @@ function hydrateWorkspaceCacheEntry(
     setOrganization: Dispatch<SetStateAction<OrganizationRecord | null>>;
     setOrganizationForm: Dispatch<SetStateAction<OrganizationRecord | null>>;
     setProgramsText: Dispatch<SetStateAction<string>>;
+    setAiSettingsDraft: Dispatch<
+      SetStateAction<{ anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" }>
+    >;
     setDrafts: Dispatch<SetStateAction<DraftRecord[]>>;
     setSelectedGrant: Dispatch<SetStateAction<GrantRecord | null>>;
     setSelectedDraft: Dispatch<SetStateAction<DraftRecord | null>>;
@@ -151,6 +161,10 @@ function hydrateWorkspaceCacheEntry(
   setState.setOrganization(entry.organization);
   setState.setOrganizationForm(entry.organization);
   setState.setProgramsText(serializePrograms(entry.organization?.programs));
+  setState.setAiSettingsDraft({
+    anthropicApiKey: entry.config.anthropic_api_key ?? "",
+    draftPreference: entry.config.draft_generation_preference ?? "local_scaffold",
+  });
   setState.setDrafts(entry.drafts);
   setState.setSelectedGrant(entry.selectedGrant);
   setState.setSelectedDraft(entry.selectedDraft);
@@ -166,6 +180,8 @@ export type WorkspaceDataResult = {
   loading: boolean;
   refreshing: boolean;
   error: string | null;
+  recoveryTitle: string | null;
+  recoveryAction: "sign_in" | "retry" | null;
   grants: GrantRecord[];
   watchlist: WatchlistEntry[];
   organization: OrganizationRecord | null;
@@ -187,20 +203,30 @@ export type WorkspaceDataResult = {
   setupAutosavedAt: string | null;
   organizationAutosaveStatus: "idle" | "saving" | "saved" | "error";
   organizationAutosavedAt: string | null;
+  aiSettingsDraft: { anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" };
+  aiSettingsStatus: "idle" | "validating" | "saving" | "saved" | "error";
+  aiSettingsMessage: string | null;
   setSetupForm: Dispatch<SetStateAction<SetupForm>>;
   setDiscoveryFilters: Dispatch<SetStateAction<DiscoveryFilters>>;
   setOrganizationForm: Dispatch<SetStateAction<OrganizationRecord | null>>;
   setProgramsText: Dispatch<SetStateAction<string>>;
+  setAiSettingsDraft: Dispatch<
+    SetStateAction<{ anthropicApiKey: string; draftPreference: "local_scaffold" | "ai" }>
+  >;
   setSelectedGrant: Dispatch<SetStateAction<GrantRecord | null>>;
   setSelectedDraft: Dispatch<SetStateAction<DraftRecord | null>>;
   saveSetup: () => Promise<void>;
   useDevProfile: () => Promise<void>;
   clearSessionAndReload: () => Promise<void>;
+  clearError: () => void;
+  recoverFromError: () => Promise<void>;
   refreshCurrentSurface: () => Promise<void>;
   refreshLiveFeeds: () => Promise<void>;
   openGrantDetail: (grant: Pick<GrantRecord, "portal_id">, nextSurface?: Surface) => Promise<void>;
   toggleWatchlistEntry: (grant: Pick<GrantRecord, "portal_id">) => Promise<void>;
   saveOrganizationProfile: () => Promise<void>;
+  validateAiSettings: () => Promise<void>;
+  saveAiSettings: () => Promise<void>;
   generateDraftFromGrant: (grant: Pick<GrantRecord, "portal_id">, nextSurface?: Surface) => Promise<void>;
   refreshSourceHealth: () => Promise<void>;
   syncAllEnabledSources: () => Promise<void>;
@@ -229,11 +255,22 @@ export function useWorkspaceData({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recoveryTitle, setRecoveryTitle] = useState<string | null>(null);
+  const [recoveryAction, setRecoveryAction] = useState<"sign_in" | "retry" | null>(null);
   const [grants, setGrants] = useState<GrantRecord[]>([]);
   const [watchlist, setWatchlist] = useState<WatchlistEntry[]>([]);
   const [organization, setOrganization] = useState<OrganizationRecord | null>(null);
   const [organizationForm, setOrganizationForm] = useState<OrganizationRecord | null>(null);
   const [programsText, setProgramsText] = useState("");
+  const [aiSettingsDraft, setAiSettingsDraft] = useState<{
+    anthropicApiKey: string;
+    draftPreference: "local_scaffold" | "ai";
+  }>({
+    anthropicApiKey: "",
+    draftPreference: "local_scaffold",
+  });
+  const [aiSettingsStatus, setAiSettingsStatus] = useState<"idle" | "validating" | "saving" | "saved" | "error">("idle");
+  const [aiSettingsMessage, setAiSettingsMessage] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<DraftRecord[]>([]);
   const [setupForm, setSetupForm] = useState<SetupForm>(() => loadSetupFormDraft());
   const [setupValidation, setSetupValidation] = useState<SetupValidation | null>(null);
@@ -258,6 +295,31 @@ export function useWorkspaceData({
   const [sourceHealth, setSourceHealth] = useState<GrantSourceHealthRecord[]>([]);
   const [syncOutcomes, setSyncOutcomes] = useState<GrantSourceSyncOutcome[] | null>(null);
   const [healthCheckedAt, setHealthCheckedAt] = useState<string | null>(null);
+
+  async function handleWorkspaceError(err: unknown, options?: { fallbackToSetup?: boolean }) {
+    const recovery = classifyAppError(err);
+    setError(recovery.message);
+    setRecoveryTitle(recovery.title);
+    if (recovery.kind === "reauth") {
+      try {
+        await api.clearSession();
+      } catch {
+        // best effort session cleanup before routing to setup
+      }
+      setRecoveryAction("sign_in");
+      if (options?.fallbackToSetup ?? true) {
+        await loadBootstrapState(createWorkspaceLocation("setup"));
+      }
+      return;
+    }
+    setRecoveryAction(recovery.kind === "service_outage" ? "retry" : null);
+  }
+
+  function clearError() {
+    setError(null);
+    setRecoveryTitle(null);
+    setRecoveryAction(null);
+  }
   const workspaceCacheRef = useRef(new Map<string, WorkspaceCacheEntry>());
   const refreshCurrentSurfaceRef = useRef(refreshCurrentSurface);
   const refreshingRef = useRef(refreshing);
@@ -285,6 +347,7 @@ export function useWorkspaceData({
       setOrganization,
       setOrganizationForm,
       setProgramsText,
+      setAiSettingsDraft,
       setDrafts,
       setSelectedGrant,
       setSelectedDraft,
@@ -327,7 +390,7 @@ export function useWorkspaceData({
       window.localStorage.setItem("grant-keeper-setup-form", serializeSetupFormDraft(current));
     },
     600,
-    `${setupForm.organization_name}|${setupForm.workspace_code}|${setupForm.email}|${setupForm.anthropic_api_key}`,
+    `${setupForm.mode}|${setupForm.organization_name}|${setupForm.workspace_code}|${setupForm.email}`,
   );
 
   const organizationAutosave = useAutosave(
@@ -356,6 +419,7 @@ export function useWorkspaceData({
   const visibleDraftId = visibleLocation.draftId;
 
   async function loadBootstrapState(nextLocation?: WorkspaceLocation) {
+    clearError();
     const [nextSnapshot, nextConfig, nextValidation] = await Promise.all([
       api.getAppSnapshot(),
       api.getLocalConfig(),
@@ -365,6 +429,10 @@ export function useWorkspaceData({
     setSnapshot(nextSnapshot);
     setConfig(nextConfig);
     setSetupValidation(nextValidation);
+    setAiSettingsDraft({
+      anthropicApiKey: nextConfig.anthropic_api_key ?? "",
+      draftPreference: nextConfig.draft_generation_preference ?? "local_scaffold",
+    });
     setSetupForm((current) => syncSetupFormFromState(current, nextConfig));
 
     if (nextValidation.ready) {
@@ -396,6 +464,10 @@ export function useWorkspaceData({
         setSnapshot(boot);
         setConfig(localConfig);
         setSetupValidation(setup);
+        setAiSettingsDraft({
+          anthropicApiKey: localConfig.anthropic_api_key ?? "",
+          draftPreference: localConfig.draft_generation_preference ?? "local_scaffold",
+        });
         setSetupForm((current) => syncSetupFormFromState(current, localConfig));
         if (boot.session.signed_in) {
           await api.refreshSession();
@@ -404,7 +476,7 @@ export function useWorkspaceData({
           await loadBootstrapState();
         }
       } catch (err) {
-        if (!cancelled) setError(toMessage(err));
+        if (!cancelled) await handleWorkspaceError(err, { fallbackToSetup: true });
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -426,13 +498,17 @@ export function useWorkspaceData({
           return;
         }
         setRefreshing(true);
-        setError(null);
+        clearError();
         const nextValidation = await api.validateSetup();
         setSetupValidation(nextValidation);
         const [nextSnapshot, nextConfig] = await Promise.all([api.getAppSnapshot(), api.getLocalConfig()]);
         if (!cancelled) {
           setSnapshot(nextSnapshot);
           setConfig(nextConfig);
+          setAiSettingsDraft({
+            anthropicApiKey: nextConfig.anthropic_api_key ?? "",
+            draftPreference: nextConfig.draft_generation_preference ?? "local_scaffold",
+          });
           setSetupForm((current) => syncSetupFormFromState(current, nextConfig));
         }
 
@@ -554,7 +630,7 @@ export function useWorkspaceData({
           }
         }
       } catch (err) {
-        if (!cancelled) setError(toMessage(err));
+        if (!cancelled) await handleWorkspaceError(err, { fallbackToSetup: visibleSurface !== "setup" });
       } finally {
         if (!cancelled) setRefreshing(false);
       }
@@ -579,7 +655,7 @@ export function useWorkspaceData({
           setSelectedGrant(fullGrant);
         }
       } catch (err) {
-        if (!cancelled) setError(toMessage(err));
+        if (!cancelled) await handleWorkspaceError(err, { fallbackToSetup: false });
       }
     }
 
@@ -610,7 +686,7 @@ export function useWorkspaceData({
           }
         }
       } catch (err) {
-        if (!cancelled) setError(toMessage(err));
+        if (!cancelled) await handleWorkspaceError(err, { fallbackToSetup: false });
       }
     }
 
@@ -627,11 +703,11 @@ export function useWorkspaceData({
   async function useDevProfile() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       await api.startDevProfile();
       await loadBootstrapState(createWorkspaceLocation("dashboard"));
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -640,28 +716,52 @@ export function useWorkspaceData({
   async function saveSetup() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
 
-      if (!setupForm.organization_name.trim()) {
-        throw new Error("Enter an organization name before continuing.");
-      }
       if (!setupForm.email.trim()) {
         throw new Error("Enter a work email before continuing.");
       }
+      if (!setupForm.password.trim()) {
+        throw new Error("Enter a password before continuing.");
+      }
 
-      await api.startWorkspaceProfile({
-        email: setupForm.email.trim(),
-        organization_name: setupForm.organization_name.trim(),
-        workspace_code: setupForm.workspace_code.trim() || null,
-      });
+      if (setupForm.mode === "create_account") {
+        if (!setupForm.organization_name.trim()) {
+          throw new Error("Enter an organization name before continuing.");
+        }
+        await api.createWorkspaceAccount({
+          email: setupForm.email.trim(),
+          password: setupForm.password,
+          organization_name: setupForm.organization_name.trim(),
+          workspace_code: setupForm.workspace_code.trim() || null,
+        });
+      } else if (setupForm.mode === "sign_in") {
+        if (!setupForm.workspace_code.trim()) {
+          throw new Error("Enter a workspace code before continuing.");
+        }
+        await api.signInToWorkspace({
+          email: setupForm.email.trim(),
+          password: setupForm.password,
+          workspace_code: setupForm.workspace_code.trim(),
+        });
+      } else {
+        if (!setupForm.workspace_code.trim()) {
+          throw new Error("Enter a workspace code before continuing.");
+        }
+        await api.signUpToJoinWorkspace({
+          email: setupForm.email.trim(),
+          password: setupForm.password,
+          workspace_code: setupForm.workspace_code.trim(),
+        });
+      }
       const nextConfig = await api.updateLocalConfig({
-        anthropic_api_key: setupForm.anthropic_api_key.trim() || null,
         setup_complete: true,
       });
       setConfig(nextConfig);
+      setSetupForm((current) => ({ ...current, password: "" }));
       await loadBootstrapState(createWorkspaceLocation("dashboard"));
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -670,20 +770,29 @@ export function useWorkspaceData({
   async function clearSessionAndReload() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       await api.clearSession();
       await loadBootstrapState(setupComplete ? createWorkspaceLocation("dashboard") : createWorkspaceLocation("setup"));
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: true });
     } finally {
       setRefreshing(false);
     }
   }
 
+  async function recoverFromError() {
+    if (recoveryAction === "sign_in") {
+      clearError();
+      await loadBootstrapState(createWorkspaceLocation("setup"));
+      return;
+    }
+    await refreshCurrentSurface();
+  }
+
   async function refreshCurrentSurface() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const [nextSnapshot, nextConfig] = await Promise.all([api.getAppSnapshot(), api.getLocalConfig()]);
       setSnapshot(nextSnapshot);
       setConfig(nextConfig);
@@ -691,8 +800,11 @@ export function useWorkspaceData({
       setSetupForm((current) => ({
         ...current,
         workspace_code: nextConfig.organization_uid ?? current.workspace_code,
-        anthropic_api_key: nextConfig.anthropic_api_key ?? "",
       }));
+      setAiSettingsDraft({
+        anthropicApiKey: nextConfig.anthropic_api_key ?? "",
+        draftPreference: nextConfig.draft_generation_preference ?? "local_scaffold",
+      });
 
       if (visibleSurface === "setup") {
         return;
@@ -745,7 +857,7 @@ export function useWorkspaceData({
       setHealthCheckedAt(new Date().toISOString());
       updateWorkspaceCache();
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: visibleSurface !== "setup" });
     } finally {
       setRefreshing(false);
     }
@@ -786,7 +898,7 @@ export function useWorkspaceData({
   async function refreshLiveFeeds() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const outcomes = await api.syncEnabledGrantSources(true);
       const [nextSnapshot, nextConfig, nextGrants, nextHealth] = await Promise.all([
         api.getAppSnapshot(),
@@ -811,7 +923,7 @@ export function useWorkspaceData({
         closed_missing: 0,
       });
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -820,7 +932,7 @@ export function useWorkspaceData({
   async function openGrantDetail(grant: Pick<GrantRecord, "portal_id">, nextSurface: Surface = "grant") {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const fullGrant = await api.getGrant(grant.portal_id);
       if (!fullGrant) {
         throw new Error(`grant ${grant.portal_id} not found`);
@@ -828,7 +940,7 @@ export function useWorkspaceData({
       setSelectedGrant(fullGrant);
       navigateWorkspace(createWorkspaceLocation(nextSurface, { grantPortalId: fullGrant.portal_id }));
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -837,7 +949,7 @@ export function useWorkspaceData({
   async function toggleWatchlistEntry(grant: Pick<GrantRecord, "portal_id">) {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const nextNote = buildWatchlistNote(grant.portal_id, grantsByPortalId.get(grant.portal_id));
       if (watchlistedPortalIds.has(grant.portal_id)) {
         await api.deleteWatchlistEntry(grant.portal_id);
@@ -852,7 +964,7 @@ export function useWorkspaceData({
       setWatchlist(normalizeWatchlistEntries(await api.listWatchlist()));
       updateWorkspaceCache();
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -861,7 +973,7 @@ export function useWorkspaceData({
   async function saveOrganizationProfile() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       if (!organizationForm) {
         throw new Error("No organization form loaded.");
       }
@@ -875,18 +987,66 @@ export function useWorkspaceData({
       setProgramsText(serializePrograms(saved.programs));
       setSetupValidation(await api.validateSetup());
       updateWorkspaceCache("organization", orgUid);
-      setError(null);
+      clearError();
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function validateAiSettings() {
+    const apiKey = aiSettingsDraft.anthropicApiKey.trim();
+    if (!apiKey) {
+      setAiSettingsStatus("error");
+      setAiSettingsMessage("Enter an Anthropic API key before validating.");
+      return;
+    }
+
+    try {
+      setAiSettingsStatus("validating");
+      clearError();
+      await api.validateAnthropicApiKey(apiKey);
+      setAiSettingsStatus("saved");
+      setAiSettingsMessage("Anthropic API key validated successfully.");
+    } catch (err) {
+      setAiSettingsStatus("error");
+      setAiSettingsMessage(classifyAppError(err).message);
+      await handleWorkspaceError(err, { fallbackToSetup: false });
+    }
+  }
+
+  async function saveAiSettings() {
+    try {
+      setAiSettingsStatus("saving");
+      clearError();
+      const nextConfig = await api.updateLocalConfig({
+        anthropic_api_key: aiSettingsDraft.anthropicApiKey.trim() || null,
+        draft_generation_preference: aiSettingsDraft.draftPreference,
+      });
+      setConfig(nextConfig);
+      setAiSettingsDraft({
+        anthropicApiKey: nextConfig.anthropic_api_key ?? "",
+        draftPreference: nextConfig.draft_generation_preference ?? "local_scaffold",
+      });
+      setAiSettingsStatus("saved");
+      setAiSettingsMessage(
+        nextConfig.anthropic_api_key
+          ? "AI drafting settings saved."
+          : "AI key removed. Drafts will stay in local scaffold mode unless you add a new key.",
+      );
+      updateWorkspaceCache("organization", orgUid);
+    } catch (err) {
+      setAiSettingsStatus("error");
+      setAiSettingsMessage(classifyAppError(err).message);
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     }
   }
 
   async function generateDraftFromGrant(grant: Pick<GrantRecord, "portal_id">, nextSurface: Surface = "drafts") {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const generated = await api.generateDraft(grant.portal_id);
       setSelectedDraft(generated);
       const linkedGrant = await api.getGrant(grant.portal_id);
@@ -901,7 +1061,7 @@ export function useWorkspaceData({
         }),
       );
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -910,12 +1070,12 @@ export function useWorkspaceData({
   async function refreshSourceHealth() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const nextHealth = await api.listGrantSourceHealth();
       setSourceHealth(nextHealth);
       setHealthCheckedAt(new Date().toISOString());
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -923,13 +1083,13 @@ export function useWorkspaceData({
 
   async function updateBackgroundRefreshInterval(intervalMs: number) {
     try {
-      setError(null);
+      clearError();
       const nextConfig = await api.updateLocalConfig({
         background_refresh_interval_ms: intervalMs,
       });
       setConfig(nextConfig);
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
       throw err;
     }
   }
@@ -937,7 +1097,7 @@ export function useWorkspaceData({
   async function syncAllEnabledSources() {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const outcomes = await api.syncEnabledGrantSources(true);
       const [health, nextGrants, nextConfig, nextSnapshot] = await Promise.all([
         api.listGrantSourceHealth(),
@@ -952,7 +1112,7 @@ export function useWorkspaceData({
       setSnapshot(nextSnapshot);
       setHealthCheckedAt(new Date().toISOString());
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -961,7 +1121,7 @@ export function useWorkspaceData({
   async function syncSingleSource(sourceId: string) {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const report = await api.syncGrantSource(sourceId, true);
       const [health, nextGrants] = await Promise.all([api.listGrantSourceHealth(), api.listGrants()]);
       setSyncOutcomes((current) => [
@@ -979,7 +1139,7 @@ export function useWorkspaceData({
       setHealthCheckedAt(new Date().toISOString());
       updateWorkspaceCache();
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -988,7 +1148,7 @@ export function useWorkspaceData({
   async function selectDraft(draft: DraftRecord, nextSurface: Surface = "drafts") {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const fullDraft = await api.getDraft(draft.draft_id);
       const nextDraft = fullDraft ?? draft;
       setSelectedDraft(nextDraft);
@@ -1006,7 +1166,7 @@ export function useWorkspaceData({
       );
       updateWorkspaceCache("drafts", orgUid);
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -1015,13 +1175,13 @@ export function useWorkspaceData({
   async function saveSelectedDraft(draft: DraftRecord) {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       const saved = await api.upsertDraft(draft);
       setSelectedDraft(saved);
       setDrafts(normalizeDraftRecords(await api.listDrafts()));
       updateWorkspaceCache("drafts", orgUid);
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -1042,7 +1202,7 @@ export function useWorkspaceData({
       });
       updateWorkspaceCache("drafts", orgUid);
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
       throw err;
     }
   }
@@ -1050,7 +1210,7 @@ export function useWorkspaceData({
   async function exportSelectedDraft(draft: DraftRecord) {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       let filePath: string | null = null;
       try {
         const defaultDirectory = await downloadDir();
@@ -1069,7 +1229,7 @@ export function useWorkspaceData({
       const exportedPath = await api.exportDraft(draft.draft_id, filePath);
       await api.revealPathInFolder(exportedPath);
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -1078,13 +1238,13 @@ export function useWorkspaceData({
   async function deleteSelectedDraft(draftId: string) {
     try {
       setRefreshing(true);
-      setError(null);
+      clearError();
       await api.deleteDraft(draftId);
       setDrafts(normalizeDraftRecords(await api.listDrafts()));
       setSelectedDraft((current) => (current?.draft_id === draftId ? null : current));
       updateWorkspaceCache("drafts", orgUid);
     } catch (err) {
-      setError(toMessage(err));
+      await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
     }
@@ -1102,6 +1262,8 @@ export function useWorkspaceData({
     loading,
     refreshing,
     error,
+    recoveryTitle,
+    recoveryAction,
     grants,
     watchlist,
     organization,
@@ -1123,20 +1285,28 @@ export function useWorkspaceData({
     setupAutosavedAt: setupAutosave.savedAt,
     organizationAutosaveStatus: organizationAutosave.status,
     organizationAutosavedAt: organizationAutosave.savedAt,
+    aiSettingsDraft,
+    aiSettingsStatus,
+    aiSettingsMessage,
     setSetupForm,
     setDiscoveryFilters,
     setOrganizationForm,
     setProgramsText,
+    setAiSettingsDraft,
     setSelectedGrant,
     setSelectedDraft,
     saveSetup,
     useDevProfile,
     clearSessionAndReload,
+    clearError,
+    recoverFromError,
     refreshCurrentSurface,
     refreshLiveFeeds,
     openGrantDetail,
     toggleWatchlistEntry,
     saveOrganizationProfile,
+    validateAiSettings,
+    saveAiSettings,
     generateDraftFromGrant,
     refreshSourceHealth,
     updateBackgroundRefreshInterval,
