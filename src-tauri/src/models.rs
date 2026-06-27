@@ -371,7 +371,24 @@ pub struct WorkspaceCreateRequest {
 pub struct WorkspaceJoinRequest {
     pub email: String,
     pub password: String,
-    pub workspace_code: String,
+    pub workspace_code: Option<String>,
+    pub invite_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(default)]
+pub struct WorkspaceInviteRecord {
+    pub invite_token: String,
+    pub organization_uid: String,
+    pub organization_name: Option<String>,
+    pub role: String,
+    pub created_by_uid: String,
+    pub created_by_email: String,
+    pub created_at: Option<DateTime<Utc>>,
+    pub claimed_by_uid: Option<String>,
+    pub claimed_by_email: Option<String>,
+    pub claimed_at: Option<DateTime<Utc>>,
+    pub active: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]

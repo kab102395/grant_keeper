@@ -5,7 +5,7 @@ use crate::{
         EmailPasswordSignUp, FirebaseSession,
         GrantRecord, GrantSourceHealthRecord, GrantSourceRecord, GrantSourceSyncOutcome,
         LocalConfig, OrganizationRecord, SetupValidation, WatchlistEntry, WorkspaceCreateRequest,
-        WorkspaceJoinRequest,
+        WorkspaceInviteRecord, WorkspaceJoinRequest,
     },
     state::AppState,
 };
@@ -96,12 +96,30 @@ pub async fn sign_up_to_join_workspace(
 }
 
 #[tauri::command]
+pub async fn create_workspace_invite(
+    state: State<'_, AppState>,
+) -> Result<WorkspaceInviteRecord, String> {
+    state.create_workspace_invite().await.map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn refresh_session(
     state: State<'_, AppState>,
 ) -> Result<Option<FirebaseSession>, String> {
     let auth = state.firebase_auth_client().await.map_err(error_string)?;
     state
         .ensure_valid_session(&auth)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
+pub async fn send_password_reset_email(
+    state: State<'_, AppState>,
+    email: String,
+) -> Result<(), String> {
+    state
+        .send_password_reset_email(email.trim())
         .await
         .map_err(error_string)
 }
@@ -705,6 +723,15 @@ fn error_string<E: std::fmt::Display>(err: E) -> String {
             retryable: true,
             requires_reauth: false,
             service: Some("anthropic"),
+        }
+    } else if normalized.contains("email_not_found") {
+        CommandErrorPayload {
+            code: "email_not_found",
+            message: "That work email does not match an existing account yet.".to_string(),
+            detail: Some(raw),
+            retryable: false,
+            requires_reauth: false,
+            service: Some("firebase"),
         }
     } else {
         CommandErrorPayload {

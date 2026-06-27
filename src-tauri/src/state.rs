@@ -8,7 +8,7 @@ use crate::{
         GrantSourceSyncOutcome, LocalConfig, OrganizationProgram, OrganizationRecord, SessionMode,
         SessionState, SetupValidation, StartupState, WorkspaceBootstrapContract,
         WorkspaceBootstrapStage, WorkspaceCreateRequest, WorkspaceJoinRequest,
-        WorkspaceMembershipRecord,
+        WorkspaceInviteRecord, WorkspaceMembershipRecord,
     },
     source_adapters::{
         canonical_source_id_for_id, source_family_for_id, source_requires_auto_sync,
@@ -225,6 +225,26 @@ impl AppState {
         .into())
     }
 
+    pub async fn require_owner_workspace_access(&self) -> Result<String, AppStateError> {
+        let org_uid = self.require_workspace_access().await?;
+        let session = self.current_session().await.ok_or_else(|| {
+            FirebaseError::Auth("missing active session for owner access".to_string())
+        })?;
+        let membership = self
+            .workspace_membership(&org_uid, &session.uid)
+            .await?
+            .ok_or_else(|| {
+                FirebaseError::Auth("workspace membership was not found".to_string())
+            })?;
+        if membership.role != "owner" {
+            return Err(FirebaseError::Auth(
+                "owner access is required for this workspace action".to_string(),
+            )
+            .into());
+        }
+        Ok(org_uid)
+    }
+
     pub async fn ensure_valid_session(
         &self,
         auth: &FirebaseAuthClient,
@@ -311,6 +331,12 @@ impl AppState {
         Ok(session)
     }
 
+    pub async fn send_password_reset_email(&self, email: &str) -> Result<(), AppStateError> {
+        let auth = self.firebase_auth_client().await?;
+        auth.send_password_reset_email(email).await?;
+        Ok(())
+    }
+
     pub async fn start_dev_profile(&self) -> Result<FirebaseSession, AppStateError> {
         let uid = format!("dev-{}", Uuid::new_v4());
         let session = FirebaseSession {
@@ -358,7 +384,23 @@ impl AppState {
             .map(slug_source_name)
             .unwrap_or_else(|| slug_workspace_name(organization_name, email));
 
-        self.ensure_workspace_missing(&workspace_code).await?;
+        if self.workspace_exists(&workspace_code).await? {
+            let session = self
+                .sign_in_with_email_password(EmailPasswordSignIn {
+                    email: email.to_string(),
+                    password: request.password,
+                })
+                .await?;
+            if let Err(err) = self
+                .resume_existing_workspace_session(&session, &workspace_code)
+                .await
+            {
+                let _ = self.clear_session().await;
+                return Err(err);
+            }
+            return Ok(session);
+        }
+
         let session = self
             .sign_up_with_email_password(EmailPasswordSignUp {
                 email: email.to_string(),
@@ -376,6 +418,40 @@ impl AppState {
         Ok(session)
     }
 
+    pub async fn create_workspace_invite(&self) -> Result<WorkspaceInviteRecord, AppStateError> {
+        let organization_uid = self.require_owner_workspace_access().await?;
+        let session = self.current_session().await.ok_or_else(|| {
+            FirebaseError::Auth("missing active session for invite creation".to_string())
+        })?;
+        let organization = self
+            .workspace_organization(&organization_uid)
+            .await?
+            .ok_or_else(|| {
+                FirebaseError::Auth("workspace organization was not found".to_string())
+            })?;
+        let invite = WorkspaceInviteRecord {
+            invite_token: format!("gk-{}", Uuid::new_v4().simple()),
+            organization_uid: organization_uid.clone(),
+            organization_name: organization.name.clone(),
+            role: "member".to_string(),
+            created_by_uid: session.uid.clone(),
+            created_by_email: session.email.clone(),
+            created_at: Some(Utc::now()),
+            claimed_by_uid: None,
+            claimed_by_email: None,
+            claimed_at: None,
+            active: true,
+        };
+        let client = self.rtdb_client().await?;
+        client
+            .put_json(
+                &crate::db::workspace_invite_path(&invite.invite_token),
+                &invite,
+            )
+            .await?;
+        Ok(invite)
+    }
+
     pub async fn sign_in_to_workspace(
         &self,
         request: WorkspaceJoinRequest,
@@ -387,7 +463,13 @@ impl AppState {
         if request.password.trim().is_empty() {
             return Err(FirebaseError::Auth("password is required".to_string()).into());
         }
-        let workspace_code = slug_source_name(request.workspace_code.trim());
+        let workspace_code = request
+            .workspace_code
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(slug_source_name)
+            .unwrap_or_default();
         if workspace_code.is_empty() {
             return Err(FirebaseError::Auth("workspace code is required".to_string()).into());
         }
@@ -398,14 +480,13 @@ impl AppState {
                 password: request.password,
             })
             .await?;
-        self.attach_session_to_workspace(&session, &workspace_code, "member")
-            .await?;
-        self.update_config(ConfigUpdate {
-            organization_uid: Some(workspace_code),
-            setup_complete: Some(true),
-            ..Default::default()
-        })
-        .await?;
+        if let Err(err) = self
+            .attach_session_to_workspace(&session, &workspace_code, "member")
+            .await
+        {
+            let _ = self.clear_session().await;
+            return Err(err);
+        }
         Ok(session)
     }
 
@@ -420,9 +501,22 @@ impl AppState {
         if request.password.trim().is_empty() {
             return Err(FirebaseError::Auth("password is required".to_string()).into());
         }
-        let workspace_code = slug_source_name(request.workspace_code.trim());
-        if workspace_code.is_empty() {
-            return Err(FirebaseError::Auth("workspace code is required".to_string()).into());
+        let invite_token = request
+            .invite_token
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| FirebaseError::Auth("invite token is required".to_string()))?
+            .to_string();
+        let invite = self
+            .workspace_invite(&invite_token)
+            .await?
+            .ok_or_else(|| FirebaseError::Auth("invite token was not found".to_string()))?;
+        if !invite.active || invite.claimed_at.is_some() {
+            return Err(FirebaseError::Auth(
+                "invite token is no longer active".to_string(),
+            )
+            .into());
         }
 
         let session = self
@@ -431,14 +525,13 @@ impl AppState {
                 password: request.password,
             })
             .await?;
-        self.attach_session_to_workspace(&session, &workspace_code, "member")
-            .await?;
-        self.update_config(ConfigUpdate {
-            organization_uid: Some(workspace_code),
-            setup_complete: Some(true),
-            ..Default::default()
-        })
-        .await?;
+        if let Err(err) = self
+            .redeem_workspace_invite(&session, &invite)
+            .await
+        {
+            let _ = self.clear_session().await;
+            return Err(err);
+        }
         Ok(session)
     }
 
@@ -553,25 +646,18 @@ impl AppState {
         Ok(())
     }
 
-    async fn ensure_workspace_missing(&self, workspace_code: &str) -> Result<(), AppStateError> {
+    async fn workspace_exists(&self, workspace_code: &str) -> Result<bool, AppStateError> {
         let client = self.rtdb_client().await?;
         let org_path = crate::db::organization_path(workspace_code);
         let existing = client.get_json(&org_path).await?;
-        if matches!(existing, Value::Null) {
-            return Ok(());
-        }
-
-        Err(FirebaseError::Auth(format!(
-            "workspace code {workspace_code} is already in use"
-        ))
-        .into())
+        Ok(!matches!(existing, Value::Null))
     }
 
     async fn attach_session_to_workspace(
         &self,
         session: &FirebaseSession,
         workspace_code: &str,
-        role: &str,
+        default_role: &str,
     ) -> Result<(), AppStateError> {
         let client = self.rtdb_client().await?;
         let org_path = crate::db::organization_path(workspace_code);
@@ -583,11 +669,18 @@ impl AppState {
             .into());
         }
 
+        let existing_membership = self
+            .workspace_membership(workspace_code, &session.uid)
+            .await?;
+        let role = existing_membership
+            .as_ref()
+            .map(|membership| membership.role.clone())
+            .unwrap_or_else(|| default_role.to_string());
         let membership = WorkspaceMembershipRecord {
             firebase_uid: session.uid.clone(),
             email: session.email.clone(),
             organization_uid: workspace_code.to_string(),
-            role: role.to_string(),
+            role,
             updated_at: Some(Utc::now()),
         };
         client
@@ -600,6 +693,60 @@ impl AppState {
             .put_json(
                 &crate::db::membership_path(&session.uid, workspace_code),
                 &membership,
+            )
+            .await?;
+        self.update_config(ConfigUpdate {
+            organization_uid: Some(workspace_code.to_string()),
+            setup_complete: Some(true),
+            ..Default::default()
+        })
+        .await?;
+        Ok(())
+    }
+
+    async fn resume_existing_workspace_session(
+        &self,
+        session: &FirebaseSession,
+        workspace_code: &str,
+    ) -> Result<(), AppStateError> {
+        let existing_membership = self
+            .workspace_membership(workspace_code, &session.uid)
+            .await?;
+        let organization = self.workspace_organization(workspace_code).await?;
+        let role = resolve_existing_workspace_role(
+            existing_membership.as_ref(),
+            organization
+                .as_ref()
+                .and_then(|record| record.contact_email.as_deref()),
+            &session.email,
+        )
+        .ok_or_else(|| {
+            FirebaseError::Auth(
+                "workspace code is already in use for another organization. Ask the organization owner for a workspace invite token."
+                    .to_string(),
+            )
+        })?;
+        self.attach_session_to_workspace(session, workspace_code, &role)
+            .await
+    }
+
+    async fn redeem_workspace_invite(
+        &self,
+        session: &FirebaseSession,
+        invite: &WorkspaceInviteRecord,
+    ) -> Result<(), AppStateError> {
+        self.attach_session_to_workspace(session, &invite.organization_uid, &invite.role)
+            .await?;
+        let client = self.rtdb_client().await?;
+        let mut claimed = invite.clone();
+        claimed.active = false;
+        claimed.claimed_by_uid = Some(session.uid.clone());
+        claimed.claimed_by_email = Some(session.email.clone());
+        claimed.claimed_at = Some(Utc::now());
+        client
+            .put_json(
+                &crate::db::workspace_invite_path(&invite.invite_token),
+                &claimed,
             )
             .await?;
         Ok(())
@@ -631,6 +778,39 @@ impl AppState {
             })?;
         client.put_json(&primary_path, &membership).await?;
         Ok(Some(membership))
+    }
+
+    async fn workspace_organization(
+        &self,
+        workspace_code: &str,
+    ) -> Result<Option<OrganizationRecord>, AppStateError> {
+        let client = self.rtdb_client().await?;
+        let payload = client
+            .get_json(&crate::db::organization_path(workspace_code))
+            .await?;
+        if matches!(payload, Value::Null) {
+            return Ok(None);
+        }
+        let organization: OrganizationRecord = serde_json::from_value(payload)
+            .map_err(|err| FirebaseError::Auth(format!("invalid organization record: {err}")))?;
+        Ok(Some(organization))
+    }
+
+    async fn workspace_invite(
+        &self,
+        invite_token: &str,
+    ) -> Result<Option<WorkspaceInviteRecord>, AppStateError> {
+        let client = self.rtdb_client().await?;
+        let payload = client
+            .get_json(&crate::db::workspace_invite_path(invite_token))
+            .await?;
+        if matches!(payload, Value::Null) {
+            return Ok(None);
+        }
+        let invite: WorkspaceInviteRecord = serde_json::from_value(payload).map_err(|err| {
+            FirebaseError::Auth(format!("invalid workspace invite record: {err}"))
+        })?;
+        Ok(Some(invite))
     }
 
     pub async fn grant_catalog(&self) -> Result<Vec<GrantRecord>, AppStateError> {
@@ -1786,6 +1966,28 @@ fn slug_workspace_name(name: &str, email: &str) -> String {
     }
 }
 
+fn resolve_existing_workspace_role(
+    existing_membership: Option<&WorkspaceMembershipRecord>,
+    organization_contact_email: Option<&str>,
+    session_email: &str,
+) -> Option<String> {
+    if let Some(membership) = existing_membership {
+        return Some(membership.role.clone());
+    }
+
+    let session_email = session_email.trim();
+    let contact_email = organization_contact_email?.trim();
+    if session_email.is_empty() || contact_email.is_empty() {
+        return None;
+    }
+
+    if contact_email.eq_ignore_ascii_case(session_email) {
+        return Some("owner".to_string());
+    }
+
+    None
+}
+
 fn collection_entries(payload: Value) -> Vec<(String, Value)> {
     match payload {
         Value::Null => Vec::new(),
@@ -1802,6 +2004,8 @@ fn collection_entries(payload: Value) -> Vec<(String, Value)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{ConfigStore, SessionStore};
+    use tempfile::TempDir;
 
     fn blank_config() -> LocalConfig {
         LocalConfig::default()
@@ -2022,5 +2226,178 @@ mod tests {
     #[test]
     fn grant_cache_expires_after_ttl() {
         assert!(!grant_cache_is_fresh(Utc::now() - Duration::minutes(5)));
+    }
+
+    #[test]
+    fn resolve_existing_workspace_role_prefers_existing_membership_role() {
+        let membership = WorkspaceMembershipRecord {
+            role: "member".to_string(),
+            ..Default::default()
+        };
+
+        let role = resolve_existing_workspace_role(
+            Some(&membership),
+            Some("owner@example.org"),
+            "owner@example.org",
+        );
+
+        assert_eq!(role.as_deref(), Some("member"));
+    }
+
+    #[test]
+    fn resolve_existing_workspace_role_allows_contact_email_to_resume_owner_access() {
+        let role = resolve_existing_workspace_role(
+            None,
+            Some("Owner@Example.org"),
+            "owner@example.org",
+        );
+
+        assert_eq!(role.as_deref(), Some("owner"));
+    }
+
+    #[test]
+    fn resolve_existing_workspace_role_rejects_unmatched_email_without_membership() {
+        let role = resolve_existing_workspace_role(
+            None,
+            Some("owner@example.org"),
+            "writer@example.org",
+        );
+
+        assert_eq!(role, None);
+    }
+
+    fn live_test_config() -> Option<LocalConfig> {
+        let _ = dotenvy::from_path("../.env");
+        let _ = dotenvy::from_path(".env");
+        let rtdb_url = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_RTD_URL").ok()?;
+        let web_api_key = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_WEB_API_KEY").ok()?;
+        let auth_domain = std::env::var("GRANT_KEEPER_DEFAULT_FIREBASE_AUTH_DOMAIN").ok()?;
+        if rtdb_url.trim().is_empty() || web_api_key.trim().is_empty() || auth_domain.trim().is_empty() {
+            return None;
+        }
+        Some(LocalConfig {
+            firebase_rtdb_url: Some(rtdb_url),
+            firebase_web_api_key: Some(web_api_key),
+            firebase_auth_domain: Some(auth_domain),
+            ..Default::default()
+        })
+    }
+
+    fn temp_app_state(config: LocalConfig) -> (TempDir, AppState) {
+        let dir = TempDir::new().unwrap();
+        let config_store = ConfigStore::new(dir.path().join("config.json"));
+        let session_store = SessionStore::new(dir.path().join("session.json"));
+        let state = AppState {
+            inner: Arc::new(RwLock::new(AppStateInner {
+                config_store,
+                session_store,
+                config,
+                session: None,
+                grant_cache: None,
+            })),
+        };
+        (dir, state)
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_workspace_invite_auth_smoke() {
+        let Some(config) = live_test_config() else {
+            panic!("missing live Firebase/RTDB config in .env");
+        };
+        let (_dir, state) = temp_app_state(config);
+        let nonce = Uuid::new_v4().simple().to_string();
+        let workspace_code = format!("smoke-{nonce}");
+        let owner_email = format!("owner+{nonce}@grantkeeper.local");
+        let member_email = format!("member+{nonce}@grantkeeper.local");
+        let owner_password = format!("GrantKeeper!{}aa", &nonce[..8]);
+        let member_password = format!("GrantKeeper!{}bb", &nonce[..8]);
+
+        let owner = state
+            .create_workspace_account(WorkspaceCreateRequest {
+                email: owner_email.clone(),
+                password: owner_password.clone(),
+                organization_name: "Grant Keeper Smoke Org".to_string(),
+                workspace_code: Some(workspace_code.clone()),
+            })
+            .await
+            .expect("owner workspace creation");
+        assert_eq!(owner.email, owner_email);
+
+        let invite = state
+            .create_workspace_invite()
+            .await
+            .expect("owner invite creation");
+        assert!(invite.active);
+        assert_eq!(invite.organization_uid, workspace_code);
+
+        state.clear_session().await.expect("clear owner session");
+
+        let member = state
+            .sign_up_to_join_workspace(WorkspaceJoinRequest {
+                email: member_email.clone(),
+                password: member_password.clone(),
+                workspace_code: None,
+                invite_token: Some(invite.invite_token.clone()),
+            })
+            .await
+            .expect("member join via invite");
+        assert_eq!(member.email, member_email);
+
+        let reused = state
+            .sign_up_to_join_workspace(WorkspaceJoinRequest {
+                email: format!("reuse+{nonce}@grantkeeper.local"),
+                password: format!("GrantKeeper!{}cc", &nonce[..8]),
+                workspace_code: None,
+                invite_token: Some(invite.invite_token.clone()),
+            })
+            .await;
+        assert!(reused.is_err(), "invite token should be single-use");
+
+        state.clear_session().await.expect("clear member session");
+
+        let member_signed_in = state
+            .sign_in_to_workspace(WorkspaceJoinRequest {
+                email: member_email.clone(),
+                password: member_password.clone(),
+                workspace_code: Some(workspace_code.clone()),
+                invite_token: None,
+            })
+            .await
+            .expect("member sign in to existing workspace");
+        assert_eq!(member_signed_in.email, member_email);
+
+        state.clear_session().await.expect("clear member session again");
+
+        let owner_signed_in = state
+            .sign_in_to_workspace(WorkspaceJoinRequest {
+                email: owner_email.clone(),
+                password: owner_password.clone(),
+                workspace_code: Some(workspace_code.clone()),
+                invite_token: None,
+            })
+            .await
+            .expect("owner sign in to existing workspace");
+        assert_eq!(owner_signed_in.email, owner_email);
+
+        state
+            .send_password_reset_email(&owner_email)
+            .await
+            .expect("owner password reset request");
+
+        state.clear_session().await.expect("clear before invalid sign in");
+        let invalid = state
+            .sign_in_to_workspace(WorkspaceJoinRequest {
+                email: member_email,
+                password: member_password,
+                workspace_code: Some(format!("{workspace_code}-invalid")),
+                invite_token: None,
+            })
+            .await;
+        assert!(invalid.is_err(), "invalid workspace code should fail");
+        assert!(
+            state.current_session().await.is_none(),
+            "invalid workspace code should not leave an active session"
+        );
     }
 }

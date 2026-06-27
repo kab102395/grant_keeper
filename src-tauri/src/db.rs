@@ -34,6 +34,14 @@ pub fn membership_path(firebase_uid: &str, organization_uid: &str) -> String {
     format!("memberships/{firebase_uid}/{organization_uid}")
 }
 
+pub fn workspace_invites_root() -> &'static str {
+    "workspace_invites"
+}
+
+pub fn workspace_invite_path(invite_token: &str) -> String {
+    format!("workspace_invites/{invite_token}")
+}
+
 pub fn watchlist_path(uid: &str) -> String {
     format!("watchlist/{uid}")
 }
@@ -60,11 +68,16 @@ mod tests {
         assert_eq!(organization_path("abc"), "organizations/abc");
         assert_eq!(organization_members_root(), "organization_members");
         assert_eq!(memberships_root(), "memberships");
+        assert_eq!(workspace_invites_root(), "workspace_invites");
         assert_eq!(
             organization_member_path("org", "uid"),
             "organization_members/org/uid"
         );
         assert_eq!(membership_path("uid", "org"), "memberships/uid/org");
+        assert_eq!(
+            workspace_invite_path("invite-123"),
+            "workspace_invites/invite-123"
+        );
         assert_eq!(watchlist_path("uid"), "watchlist/uid");
         assert_eq!(watchlist_entry_path("uid", "456"), "watchlist/uid/456");
         assert_eq!(draft_path("uid", "draft"), "drafts/uid/draft");
@@ -127,8 +140,10 @@ mod tests {
         assert!(!organization_path("uid").contains("//"));
         assert!(!organization_members_root().contains("//"));
         assert!(!memberships_root().contains("//"));
+        assert!(!workspace_invites_root().contains("//"));
         assert!(!organization_member_path("org", "uid").contains("//"));
         assert!(!membership_path("uid", "org").contains("//"));
+        assert!(!workspace_invite_path("invite").contains("//"));
         assert!(!draft_path("uid", "did").contains("//"));
         assert!(!watchlist_entry_path("uid", "pid").contains("//"));
     }
@@ -143,6 +158,7 @@ mod tests {
             let _ = grant_path(&id);
             let _ = draft_path(&id, &id);
             let _ = watchlist_entry_path(&id, &id);
+            let _ = workspace_invite_path(&id);
         }
         assert!(
             start.elapsed().as_millis() < 500,

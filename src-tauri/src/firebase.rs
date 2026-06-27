@@ -46,6 +46,13 @@ struct SignInRequest<'a> {
     return_secure_token: bool,
 }
 
+#[derive(Debug, Serialize)]
+struct PasswordResetRequest<'a> {
+    #[serde(rename = "requestType")]
+    request_type: &'static str,
+    email: &'a str,
+}
+
 #[derive(Debug, Deserialize)]
 struct RefreshResponse {
     #[serde(rename = "id_token")]
@@ -98,6 +105,35 @@ impl FirebaseAuthClient {
     ) -> Result<FirebaseSession, FirebaseError> {
         self.email_password_auth("accounts:signUp", email, password)
             .await
+    }
+
+    pub async fn send_password_reset_email(&self, email: &str) -> Result<(), FirebaseError> {
+        if self.api_key.trim().is_empty() {
+            return Err(FirebaseError::MissingApiKey);
+        }
+
+        let url = format!(
+            "{}/accounts:sendOobCode?key={}",
+            self.sign_in_base_url, self.api_key
+        );
+
+        let response = self
+            .http
+            .post(url)
+            .json(&PasswordResetRequest {
+                request_type: "PASSWORD_RESET",
+                email,
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(FirebaseError::Auth(
+                response.text().await.unwrap_or_default(),
+            ));
+        }
+
+        Ok(())
     }
 
     async fn email_password_auth(
@@ -296,6 +332,16 @@ mod tests {
         assert!(matches!(err, FirebaseError::MissingRefreshToken));
     }
 
+    #[tokio::test]
+    async fn password_reset_empty_api_key_returns_missing_key_error() {
+        let client = FirebaseAuthClient::new("");
+        let err = client
+            .send_password_reset_email("user@example.com")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirebaseError::MissingApiKey));
+    }
+
     // ── successful sign-in via mock ────────────────────────────────────────
 
     #[tokio::test]
@@ -353,6 +399,45 @@ mod tests {
         assert_eq!(session.refresh_token, "signup-ref-tok");
         assert_eq!(session.uid, "uid-signup-001");
         assert_eq!(session.email, "newuser@example.com");
+    }
+
+    #[tokio::test]
+    async fn password_reset_success_calls_send_oob_code() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path_regex(r"/accounts:sendOobCode"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "email": "user@example.com"
+            })))
+            .mount(&server)
+            .await;
+
+        make_client(&server)
+            .send_password_reset_email("user@example.com")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn password_reset_http_error_returns_auth_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path_regex(r"/accounts:sendOobCode"))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_string(r#"{"error":{"code":400,"message":"EMAIL_NOT_FOUND"}}"#),
+            )
+            .mount(&server)
+            .await;
+
+        let err = make_client(&server)
+            .send_password_reset_email("missing@example.com")
+            .await
+            .unwrap_err();
+        assert!(matches!(err, FirebaseError::Auth(_)));
+        if let FirebaseError::Auth(body) = err {
+            assert!(body.contains("EMAIL_NOT_FOUND"));
+        }
     }
 
     #[tokio::test]
