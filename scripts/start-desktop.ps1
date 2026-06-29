@@ -1,65 +1,50 @@
-$ErrorActionPreference = "Stop"
-
-$repoRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot  = Split-Path -Parent $PSScriptRoot
 $tauriRoot = Join-Path $repoRoot "src-tauri"
-$vitePort = 5173
-$viteHost = "127.0.0.1"
-$viteUrl = "http://$viteHost`:$vitePort"
+$vitePort  = 5173
+$viteHost  = "127.0.0.1"
 $viteScript = Join-Path $PSScriptRoot "start-vite.ps1"
-$grantKeeperExe = Join-Path $tauriRoot "target\debug\grant-keeper.exe"
 
 Set-Location $repoRoot
 
-$staleGrantKeeper = Get-Process grant-keeper -ErrorAction SilentlyContinue
-if ($staleGrantKeeper) {
-    $staleGrantKeeper | Stop-Process -Force
+# Kill stale grant-keeper, cargo, and any node holding the Vite port
+Get-Process grant-keeper -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-Process cargo        -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+$vitePids = Get-NetTCPConnection -LocalPort $vitePort -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -ExpandProperty OwningProcess -Unique
+if ($vitePids) {
+    Stop-Process -Id $vitePids -Force -ErrorAction SilentlyContinue
 }
+Start-Sleep -Milliseconds 500
 
-$unlockDeadline = (Get-Date).AddSeconds(20)
-while (Test-Path $grantKeeperExe) {
+# Start Vite in a hidden background window
+Start-Process powershell.exe `
+    -WindowStyle Hidden `
+    -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $viteScript
+
+# Wait for Vite to accept connections (up to 45 s)
+$deadline = (Get-Date).AddSeconds(45)
+$ready = $false
+while ((Get-Date) -lt $deadline) {
     try {
-        Remove-Item -LiteralPath $grantKeeperExe -Force -ErrorAction Stop
+        $tcp = [System.Net.Sockets.TcpClient]::new()
+        $tcp.Connect($viteHost, $vitePort)
+        $tcp.Close()
+        $ready = $true
         break
     } catch {
-        if ((Get-Date) -gt $unlockDeadline) {
-            throw "Grant Keeper is still holding $grantKeeperExe. Close any running app window and try again."
-        }
-        Start-Sleep -Milliseconds 500
+        Start-Sleep -Milliseconds 300
     }
 }
-
-$listener = Get-NetTCPConnection -LocalPort $vitePort -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-if ($listener) {
-    try {
-        Stop-Process -Id $listener.OwningProcess -Force
-    } catch {
-        # The port may already be in the middle of shutting down.
-    }
+if (-not $ready) {
+    Write-Error "Vite did not start on port $vitePort within 45 seconds."
+    exit 1
 }
 
-Start-Process -FilePath "powershell.exe" `
-    -WindowStyle Hidden `
-    -ArgumentList @(
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        $viteScript
-    ) | Out-Null
+Write-Host "Vite ready. Starting Grant Keeper..." -ForegroundColor Green
 
-$deadline = (Get-Date).AddSeconds(45)
-while (-not (Test-NetConnection -ComputerName $viteHost -Port $vitePort -InformationLevel Quiet)) {
-    if ((Get-Date) -gt $deadline) {
-        throw "Vite did not become ready at $viteUrl within 45 seconds."
-    }
-    Start-Sleep -Milliseconds 250
-}
-
-Start-Process -FilePath "powershell.exe" `
+# Build and run the Rust backend in a visible window that stays open on error
+Start-Process powershell.exe `
     -WindowStyle Normal `
     -WorkingDirectory $tauriRoot `
-    -ArgumentList @(
-        "-NoExit",
-        "-Command",
-        "cargo run --no-default-features"
-    ) | Out-Null
+    -ArgumentList "-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `
+        "cargo run --no-default-features; if (`$LASTEXITCODE -ne 0) { Write-Host 'cargo exited with code' `$LASTEXITCODE -ForegroundColor Red; pause }"

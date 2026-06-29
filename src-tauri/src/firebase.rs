@@ -65,6 +65,8 @@ struct GoogleIdpRequest<'a> {
     return_secure_token: bool,
     #[serde(rename = "returnIdpCredential")]
     return_idp_credential: bool,
+    #[serde(rename = "idToken", skip_serializing_if = "Option::is_none")]
+    id_token: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -186,6 +188,67 @@ impl FirebaseAuthClient {
                 request_uri: "http://localhost",
                 return_secure_token: true,
                 return_idp_credential: true,
+                id_token: None,
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(FirebaseError::Auth(
+                response.text().await.unwrap_or_default(),
+            ));
+        }
+
+        let payload: AuthResponse = response.json().await?;
+        let expires_in = payload.expires_in.parse::<i64>().unwrap_or(3600);
+
+        Ok(FirebaseSession {
+            email: payload.email,
+            uid: payload.local_id,
+            id_token: payload.id_token,
+            refresh_token: payload.refresh_token,
+            expires_at: Utc::now() + Duration::seconds(expires_in),
+        })
+    }
+
+    /// Links a Google OAuth credential onto an existing Firebase account identified
+    /// by `email_id_token`. After this call, signing in with Google returns the
+    /// same UID as the email/password account.
+    pub async fn link_google_provider(
+        &self,
+        email_id_token: &str,
+        google_id_token: &str,
+        google_access_token: Option<&str>,
+    ) -> Result<FirebaseSession, FirebaseError> {
+        if self.api_key.trim().is_empty() {
+            return Err(FirebaseError::MissingApiKey);
+        }
+
+        let url = format!(
+            "{}/accounts:signInWithIdp?key={}",
+            self.sign_in_base_url, self.api_key
+        );
+        let mut post_body = format!(
+            "id_token={}&providerId=google.com",
+            urlencoding::encode(google_id_token)
+        );
+        if let Some(access_token) = google_access_token
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            post_body.push_str("&access_token=");
+            post_body.push_str(&urlencoding::encode(access_token));
+        }
+
+        let response = self
+            .http
+            .post(url)
+            .json(&GoogleIdpRequest {
+                post_body,
+                request_uri: "http://localhost",
+                return_secure_token: true,
+                return_idp_credential: true,
+                id_token: Some(email_id_token),
             })
             .send()
             .await?;

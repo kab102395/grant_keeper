@@ -139,6 +139,18 @@ export function classifyAppError(value: unknown): {
   const normalized = `${parsed?.code ?? ""} ${parsed?.service ?? ""} ${parsed?.detail ?? ""} ${message}`.toLowerCase();
 
   if (
+    normalized.includes("invalid_idp_response") ||
+    normalized.includes("oauth 2.0 client id") ||
+    normalized.includes("client_secret is missing")
+  ) {
+    return {
+      kind: "generic",
+      title: "Google sign-in configuration failed",
+      message: parsed?.detail ?? message,
+    };
+  }
+
+  if (
     parsed?.requires_reauth ||
     normalized.includes("invalid_grant") ||
     normalized.includes("token expired") ||

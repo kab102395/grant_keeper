@@ -45,6 +45,8 @@ export const api = {
     invoke<FirebaseSession>("sign_up_to_join_workspace", { request }),
   joinWorkspaceWithGoogle: (request: GoogleWorkspaceJoinRequest) =>
     invoke<FirebaseSession>("join_workspace_with_google", { request }),
+  completeGoogleAccountLink: (password: string) =>
+    invoke<FirebaseSession>("complete_google_account_link", { password }),
   refreshSession: () => invoke<FirebaseSession | null>("refresh_session"),
   sendPasswordResetEmail: (email: string) => invoke<void>("send_password_reset_email", { email }),
   validateAnthropicApiKey: (apiKey: string) => invoke<void>("validate_anthropic_api_key", { apiKey }),

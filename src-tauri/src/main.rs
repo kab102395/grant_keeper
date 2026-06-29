@@ -37,6 +37,7 @@ fn main() {
             commands::create_workspace_invite,
             commands::sign_in_to_workspace,
             commands::sign_in_to_workspace_with_google,
+            commands::complete_google_account_link,
             commands::sign_up_to_join_workspace,
             commands::join_workspace_with_google,
             commands::refresh_session,

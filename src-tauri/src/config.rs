@@ -84,6 +84,7 @@ impl ConfigStore {
             organization_uid: update
                 .organization_uid
                 .clone()
+                .and_then(|v| if v.is_empty() { None } else { Some(v) })
                 .or_else(|| current.organization_uid.clone()),
             setup_complete: update.setup_complete.unwrap_or(current.setup_complete),
             last_sync_at: update.last_sync_at.or_else(|| current.last_sync_at.clone()),

@@ -6,6 +6,7 @@ export function SetupPage({
   setSetupForm,
   saveSetup,
   saveSetupWithGoogle,
+  completeGoogleLink,
   requestPasswordReset,
   useDevProfile,
   canSaveSetup,
@@ -15,6 +16,7 @@ export function SetupPage({
   autosaveAt,
   googleSignInEnabled,
   googleAuthStatus,
+  googleLinkEmail,
   setupSupportStatus,
   setupSupportMessage,
 }: {
@@ -22,6 +24,7 @@ export function SetupPage({
   setSetupForm: Dispatch<SetStateAction<SetupForm>>;
   saveSetup: () => Promise<void>;
   saveSetupWithGoogle: () => Promise<void>;
+  completeGoogleLink: (password: string) => Promise<void>;
   requestPasswordReset: () => Promise<void>;
   useDevProfile: () => Promise<void>;
   canSaveSetup: boolean;
@@ -30,7 +33,8 @@ export function SetupPage({
   autosaveStatus: "idle" | "saving" | "saved" | "error";
   autosaveAt: string | null;
   googleSignInEnabled: boolean;
-  googleAuthStatus: "idle" | "saving" | "saved" | "error";
+  googleAuthStatus: "idle" | "saving" | "saved" | "error" | "needs_link";
+  googleLinkEmail: string | null;
   setupSupportStatus: "idle" | "saving" | "saved" | "error";
   setupSupportMessage: string | null;
 }) {
@@ -187,6 +191,35 @@ export function SetupPage({
         ) : null}
       </div>
 
+      {googleAuthStatus === "needs_link" && googleLinkEmail ? (
+        <div className="surface-copy">
+          <p>
+            <strong>Link your Google account</strong><br />
+            Your Google account ({googleLinkEmail}) was found but your workspace was created with a password.
+            Enter your password to permanently link Google sign-in — after this, both methods will work.
+          </p>
+          <label>
+            Password
+            <input
+              type="password"
+              placeholder="Workspace password"
+              value={setupForm.password}
+              onChange={(e) => setSetupForm((f) => ({ ...f, password: e.target.value }))}
+            />
+          </label>
+          <div className="surface-actions">
+            <button
+              type="button"
+              className="primary"
+              disabled={!setupForm.password.trim() || googleAuthStatus === "saving"}
+              onClick={() => void completeGoogleLink(setupForm.password)}
+            >
+              {googleAuthStatus === "saving" ? "Linking..." : "Link Google and sign in"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="surface-actions">
         <button type="button" className="primary" onClick={() => void saveSetup()} disabled={!canSaveSetup}>
           {submitLabel}
@@ -196,7 +229,7 @@ export function SetupPage({
             type="button"
             className="secondary"
             onClick={() => void saveSetupWithGoogle()}
-            disabled={!canSaveSetupWithGoogle || googleAuthStatus === "saving"}
+            disabled={!canSaveSetupWithGoogle || googleAuthStatus === "saving" || googleAuthStatus === "needs_link"}
           >
             {googleAuthStatus === "saving" ? "Opening Google..." : "Continue with Google"}
           </button>

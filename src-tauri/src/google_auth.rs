@@ -102,7 +102,7 @@ impl GoogleDesktopAuthClient {
         );
         let auth_url = self.build_auth_url(&redirect_uri, &state, &code_challenge)?;
 
-        if webbrowser::open(auth_url.as_str()).is_err() {
+        if !open_browser(auth_url.as_str()) {
             return Err(GoogleAuthError::BrowserOpenFailed);
         }
 
@@ -255,6 +255,24 @@ fn parse_http_request_path(request: &str) -> Result<&str, GoogleAuthError> {
         return Err(GoogleAuthError::InvalidCallback);
     }
     Ok(path)
+}
+
+#[cfg(target_os = "windows")]
+fn open_browser(url: &str) -> bool {
+    use std::os::windows::process::CommandExt;
+    // PowerShell Start-Process is more reliable than ShellExecuteW on Windows
+    // because it handles URLs with & and % without shell-escaping issues.
+    // CREATE_NO_WINDOW (0x08000000) suppresses the console flash.
+    std::process::Command::new("powershell")
+        .creation_flags(0x08000000)
+        .args(["-NoProfile", "-Command", &format!("Start-Process '{}'", url)])
+        .spawn()
+        .is_ok()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn open_browser(url: &str) -> bool {
+    webbrowser::open(url).is_ok()
 }
 
 fn write_html_response(

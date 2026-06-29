@@ -108,6 +108,17 @@ pub async fn sign_in_to_workspace_with_google(
 }
 
 #[tauri::command]
+pub async fn complete_google_account_link(
+    state: State<'_, AppState>,
+    password: String,
+) -> Result<FirebaseSession, String> {
+    state
+        .complete_google_account_link(password)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn sign_up_to_join_workspace(
     state: State<'_, AppState>,
     request: WorkspaceJoinRequest,

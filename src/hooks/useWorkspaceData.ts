@@ -34,13 +34,21 @@ import { useAutosave } from "./useAutosave";
 import type { Dispatch, SetStateAction } from "react";
 
 function syncSetupFormFromState(current: SetupForm, nextConfig: LocalConfig, organizationName?: string | null): SetupForm {
+  const configWorkspaceCode = nextConfig.organization_uid ?? "";
+  const nextWorkspaceCode =
+    current.mode === "sign_in"
+      ? configWorkspaceCode || current.workspace_code
+      : current.workspace_code === configWorkspaceCode
+        ? ""
+        : current.workspace_code;
+
   return {
     ...current,
     organization_name:
       current.remember_organization_name && organizationName?.trim()
         ? organizationName
         : current.organization_name,
-    workspace_code: nextConfig.organization_uid ?? current.workspace_code,
+    workspace_code: nextWorkspaceCode,
     invite_token: current.invite_token,
   };
 }
@@ -221,7 +229,8 @@ export type WorkspaceDataResult = {
   setupAutosavedAt: string | null;
   setupSupportStatus: "idle" | "saving" | "saved" | "error";
   setupSupportMessage: string | null;
-  googleAuthStatus: "idle" | "saving" | "saved" | "error";
+  googleAuthStatus: "idle" | "saving" | "saved" | "error" | "needs_link";
+  googleLinkEmail: string | null;
   organizationAutosaveStatus: "idle" | "saving" | "saved" | "error";
   organizationAutosavedAt: string | null;
   workspaceInvite: WorkspaceInviteRecord | null;
@@ -241,6 +250,7 @@ export type WorkspaceDataResult = {
   setSelectedDraft: Dispatch<SetStateAction<DraftRecord | null>>;
   saveSetup: () => Promise<void>;
   saveSetupWithGoogle: () => Promise<void>;
+  completeGoogleLink: (password: string) => Promise<void>;
   requestPasswordReset: () => Promise<void>;
   useDevProfile: () => Promise<void>;
   clearSessionAndReload: () => Promise<void>;
@@ -306,7 +316,8 @@ export function useWorkspaceData({
   const [setupValidation, setSetupValidation] = useState<SetupValidation | null>(null);
   const [setupSupportStatus, setSetupSupportStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [setupSupportMessage, setSetupSupportMessage] = useState<string | null>(null);
-  const [googleAuthStatus, setGoogleAuthStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [googleAuthStatus, setGoogleAuthStatus] = useState<"idle" | "saving" | "saved" | "error" | "needs_link">("idle");
+  const [googleLinkEmail, setGoogleLinkEmail] = useState<string | null>(null);
   const [discoveryFilters, setDiscoveryFilters] = useState<DiscoveryFilters>({
     query: "",
     status: "open",
@@ -832,11 +843,8 @@ export function useWorkspaceData({
           workspace_code: setupForm.workspace_code.trim() || null,
         });
       } else if (setupForm.mode === "sign_in") {
-        if (!setupForm.workspace_code.trim()) {
-          throw new Error("Enter a workspace code before continuing.");
-        }
         await api.signInToWorkspaceWithGoogle({
-          workspace_code: setupForm.workspace_code.trim(),
+          workspace_code: setupForm.workspace_code.trim() || null,
         });
       } else {
         if (!setupForm.invite_token.trim()) {
@@ -855,7 +863,33 @@ export function useWorkspaceData({
       setGoogleAuthStatus("saved");
       await loadBootstrapState(createWorkspaceLocation("dashboard"));
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("NEEDS_GOOGLE_LINK:")) {
+        const email = msg.split("NEEDS_GOOGLE_LINK:")[1]?.trim() ?? "";
+        setGoogleLinkEmail(email);
+        setGoogleAuthStatus("needs_link");
+      } else {
+        setGoogleAuthStatus("error");
+        await handleWorkspaceError(err, { fallbackToSetup: false });
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  async function completeGoogleLink(password: string) {
+    try {
+      setRefreshing(true);
+      setGoogleAuthStatus("saving");
+      await api.completeGoogleAccountLink(password);
+      const nextConfig = await api.updateLocalConfig({ setup_complete: true });
+      setConfig(nextConfig);
+      setGoogleAuthStatus("saved");
+      setGoogleLinkEmail(null);
+      await loadBootstrapState(createWorkspaceLocation("dashboard"));
+    } catch (err) {
       setGoogleAuthStatus("error");
+      setGoogleLinkEmail(null);
       await handleWorkspaceError(err, { fallbackToSetup: false });
     } finally {
       setRefreshing(false);
@@ -895,10 +929,9 @@ export function useWorkspaceData({
       setSnapshot(nextSnapshot);
       setConfig(nextConfig);
       setSetupValidation(await api.validateSetup());
-      setSetupForm((current) => ({
-        ...current,
-        workspace_code: nextConfig.organization_uid ?? current.workspace_code,
-      }));
+      setSetupForm((current) =>
+        syncSetupFormFromState(current, nextConfig, null),
+      );
       setAiSettingsDraft({
         anthropicApiKey: nextConfig.anthropic_api_key ?? "",
         draftPreference: nextConfig.draft_generation_preference ?? "local_scaffold",
@@ -1398,6 +1431,7 @@ export function useWorkspaceData({
     setupSupportStatus,
     setupSupportMessage,
     googleAuthStatus,
+    googleLinkEmail,
     organizationAutosaveStatus: organizationAutosave.status,
     organizationAutosavedAt: organizationAutosave.savedAt,
     workspaceInvite,
@@ -1415,6 +1449,7 @@ export function useWorkspaceData({
     setSelectedDraft,
     saveSetup,
     saveSetupWithGoogle,
+    completeGoogleLink,
     requestPasswordReset,
     useDevProfile,
     clearSessionAndReload,

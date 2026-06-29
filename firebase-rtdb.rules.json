@@ -4,6 +4,7 @@
     ".write": false,
     "memberships": {
       "$firebaseUid": {
+        ".read": "auth != null && auth.uid === $firebaseUid",
         "$organizationUid": {
           ".read": "auth != null && auth.uid === $firebaseUid",
           ".write": "auth != null && auth.uid === $firebaseUid"
@@ -43,6 +44,12 @@
     "grants": {
       ".read": "auth != null",
       ".write": false
+    },
+    "workspace_invites": {
+      "$inviteToken": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
     }
   }
 }

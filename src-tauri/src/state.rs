@@ -48,6 +48,10 @@ struct AppStateInner {
     config: LocalConfig,
     session: Option<FirebaseSession>,
     grant_cache: Option<GrantCacheEntry>,
+    // Holds Google tokens temporarily during the account-linking flow.
+    // Set when sign-in-with-Google succeeds but no membership exists yet,
+    // cleared once linking completes or the user cancels.
+    pending_google_tokens: Option<crate::google_auth::GoogleDesktopAuthTokens>,
 }
 
 #[derive(Debug, Clone)]
@@ -99,6 +103,7 @@ impl AppState {
                 config,
                 session,
                 grant_cache: None,
+                pending_google_tokens: None,
             })),
         })
     }
@@ -160,6 +165,9 @@ impl AppState {
         let mut guard = self.inner.write().await;
         guard.session = None;
         guard.config.firebase_uid = None;
+        // Keep organization_uid so returning users can sign back in without
+        // re-entering their workspace code. Only create/join flows clear it.
+        guard.config.setup_complete = false;
         guard.config_store.save(&guard.config).await?;
         guard.session_store.clear().await?;
         Ok(())
@@ -442,6 +450,13 @@ impl AppState {
             return Err(FirebaseError::Auth("organization name is required".to_string()).into());
         }
 
+        self.update_config(ConfigUpdate {
+            organization_uid: Some(String::new()),
+            setup_complete: Some(false),
+            ..Default::default()
+        })
+        .await?;
+
         let session = self.authenticate_google_workspace_session().await?;
         let workspace_code = request
             .workspace_code
@@ -549,18 +564,58 @@ impl AppState {
         &self,
         request: GoogleWorkspaceSignInRequest,
     ) -> Result<FirebaseSession, AppStateError> {
-        let workspace_code = request
+        // Authenticate with Google first — the session gives us the Firebase UID
+        // which is enough to find the workspace. Workspace code is optional; if
+        // omitted we fall back to the last-known org UID stored in config.
+        let explicit_workspace_code = request
             .workspace_code
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .map(slug_source_name)
-            .unwrap_or_default();
-        if workspace_code.is_empty() {
-            return Err(FirebaseError::Auth("workspace code is required".to_string()).into());
-        }
+            .map(slug_source_name);
 
-        let session = self.authenticate_google_workspace_session().await?;
+        self.update_config(ConfigUpdate {
+            setup_complete: Some(false),
+            ..Default::default()
+        })
+        .await?;
+
+        let (session, google_tokens) = self.authenticate_google_workspace_session_with_tokens().await?;
+
+        let workspace_code = if let Some(code) = explicit_workspace_code {
+            code
+        } else {
+            // Try saved config first (fast path for returning users).
+            let saved = {
+                let guard = self.inner.read().await;
+                guard.config.organization_uid.clone().filter(|v| !v.is_empty())
+            };
+            if let Some(code) = saved {
+                code
+            } else {
+                // Look up from memberships/{uid} — requires the parent-level read
+                // rule "auth.uid === $firebaseUid" to be deployed.
+                let client = self.rtdb_client().await?;
+                let memberships_path = format!("memberships/{}", session.uid);
+                let val = client.get_json(&memberships_path).await.unwrap_or(Value::Null);
+                match val.as_object().and_then(|obj| obj.keys().next().cloned()) {
+                    Some(code) => code,
+                    None => {
+                        // No workspace under this Google UID. The user may have created
+                        // their workspace with email/password (a separate Firebase account).
+                        // Store the Google tokens so the frontend can drive the link flow.
+                        {
+                            let mut guard = self.inner.write().await;
+                            guard.pending_google_tokens = Some(google_tokens.clone());
+                        }
+                        return Err(FirebaseError::Auth(
+                            format!("NEEDS_GOOGLE_LINK:{}", session.email)
+                        ).into());
+                    }
+                }
+            }
+        };
+
         if let Err(err) = self
             .resume_existing_workspace_session(&session, &workspace_code)
             .await
@@ -569,6 +624,80 @@ impl AppState {
             return Err(err);
         }
         Ok(session)
+    }
+
+    /// Called after `sign_in_to_workspace_with_google` returns NEEDS_GOOGLE_LINK.
+    /// Signs in with email/password, links the pending Google credential onto that
+    /// account so both auth methods share one Firebase UID going forward, then
+    /// resumes the workspace session.
+    pub async fn complete_google_account_link(
+        &self,
+        password: String,
+    ) -> Result<FirebaseSession, AppStateError> {
+        let google_tokens = {
+            let guard = self.inner.read().await;
+            guard.pending_google_tokens.clone()
+        }
+        .ok_or_else(|| {
+            FirebaseError::Auth(
+                "No pending Google sign-in found. Please try Continue with Google again."
+                    .to_string(),
+            )
+        })?;
+
+        let firebase = self.firebase_auth_client().await?;
+        let email = {
+            let guard = self.inner.read().await;
+            guard.session.as_ref().map(|s| s.email.clone()).unwrap_or_default()
+        };
+        let email_session = firebase.sign_in_with_email_password(&email, &password).await?;
+
+        // Link Google onto the email account. After this, signing in with Google
+        // returns the same UID as the email/password account.
+        let linked_session = firebase
+            .link_google_provider(
+                &email_session.id_token,
+                &google_tokens.id_token,
+                Some(&google_tokens.access_token),
+            )
+            .await?;
+
+        {
+            let mut guard = self.inner.write().await;
+            guard.pending_google_tokens = None;
+        }
+
+        self.set_session(linked_session.clone()).await?;
+
+        let workspace_code = {
+            let guard = self.inner.read().await;
+            guard.config.organization_uid.clone().filter(|v| !v.is_empty())
+        };
+        let workspace_code = if let Some(code) = workspace_code {
+            code
+        } else {
+            let client = self.rtdb_client().await?;
+            let val = client
+                .get_json(&format!("memberships/{}", linked_session.uid))
+                .await
+                .unwrap_or(Value::Null);
+            val.as_object()
+                .and_then(|obj| obj.keys().next().cloned())
+                .ok_or_else(|| {
+                    FirebaseError::Auth(
+                        "Account linked but no workspace found. Ask your workspace owner for a new invite.".to_string(),
+                    )
+                })?
+        };
+
+        if let Err(err) = self
+            .resume_existing_workspace_session(&linked_session, &workspace_code)
+            .await
+        {
+            let _ = self.clear_session().await;
+            return Err(err);
+        }
+        Ok(linked_session)
     }
 
     pub async fn sign_up_to_join_workspace(
@@ -589,20 +718,47 @@ impl AppState {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| FirebaseError::Auth("invite token is required".to_string()))?
             .to_string();
-        let invite = self
-            .workspace_invite(&invite_token)
-            .await?
-            .ok_or_else(|| FirebaseError::Auth("invite token was not found".to_string()))?;
-        if !invite.active || invite.claimed_at.is_some() {
-            return Err(FirebaseError::Auth("invite token is no longer active".to_string()).into());
-        }
 
-        let session = self
+        // Authenticate first so the RTDB invite lookup uses a real session token.
+        // Fall back to sign-in if the account already exists.
+        let session = match self
             .sign_up_with_email_password(EmailPasswordSignUp {
                 email: email.to_string(),
-                password: request.password,
+                password: request.password.clone(),
             })
-            .await?;
+            .await
+        {
+            Ok(s) => s,
+            Err(err) if is_email_exists_error(&err) => {
+                self.sign_in_with_email_password(EmailPasswordSignIn {
+                    email: email.to_string(),
+                    password: request.password,
+                })
+                .await?
+            }
+            Err(err) => return Err(err),
+        };
+
+        let invite = match self.workspace_invite(&invite_token).await {
+            Ok(Some(inv)) => inv,
+            Ok(None) => {
+                let _ = self.clear_session().await;
+                return Err(
+                    FirebaseError::Auth("invite token was not found".to_string()).into()
+                );
+            }
+            Err(err) => {
+                let _ = self.clear_session().await;
+                return Err(err);
+            }
+        };
+        if !invite.active || invite.claimed_at.is_some() {
+            let _ = self.clear_session().await;
+            return Err(
+                FirebaseError::Auth("invite token is no longer active".to_string()).into(),
+            );
+        }
+
         if let Err(err) = self.redeem_workspace_invite(&session, &invite).await {
             let _ = self.clear_session().await;
             return Err(err);
@@ -621,15 +777,37 @@ impl AppState {
             .filter(|value| !value.is_empty())
             .ok_or_else(|| FirebaseError::Auth("invite token is required".to_string()))?
             .to_string();
-        let invite = self
-            .workspace_invite(&invite_token)
-            .await?
-            .ok_or_else(|| FirebaseError::Auth("invite token was not found".to_string()))?;
+
+        self.update_config(ConfigUpdate {
+            organization_uid: Some(String::new()),
+            setup_complete: Some(false),
+            ..Default::default()
+        })
+        .await?;
+
+        // Authenticate with Google first so the invite lookup uses a real session token.
+        let session = self.authenticate_google_workspace_session().await?;
+
+        let invite = match self.workspace_invite(&invite_token).await {
+            Ok(Some(inv)) => inv,
+            Ok(None) => {
+                let _ = self.clear_session().await;
+                return Err(
+                    FirebaseError::Auth("invite token was not found".to_string()).into()
+                );
+            }
+            Err(err) => {
+                let _ = self.clear_session().await;
+                return Err(err);
+            }
+        };
         if !invite.active || invite.claimed_at.is_some() {
-            return Err(FirebaseError::Auth("invite token is no longer active".to_string()).into());
+            let _ = self.clear_session().await;
+            return Err(
+                FirebaseError::Auth("invite token is no longer active".to_string()).into(),
+            );
         }
 
-        let session = self.authenticate_google_workspace_session().await?;
         if let Err(err) = self.redeem_workspace_invite(&session, &invite).await {
             let _ = self.clear_session().await;
             return Err(err);
@@ -710,6 +888,31 @@ impl AppState {
         workspace_code: &str,
     ) -> Result<(), AppStateError> {
         let client = self.rtdb_client().await?;
+
+        // Write membership nodes first — RTDB rules allow users to write their own
+        // memberships/{uid}/* and organization_members/*/{uid} without pre-existing org access.
+        // The organizations/{code} write rule requires membership to exist first.
+        let membership = WorkspaceMembershipRecord {
+            firebase_uid: session.uid.clone(),
+            email: session.email.clone(),
+            organization_uid: workspace_code.to_string(),
+            role: "owner".to_string(),
+            updated_at: Some(Utc::now()),
+        };
+        client
+            .put_json(
+                &crate::db::membership_path(&session.uid, workspace_code),
+                &membership,
+            )
+            .await?;
+        client
+            .put_json(
+                &crate::db::organization_member_path(workspace_code, &session.uid),
+                &membership,
+            )
+            .await?;
+
+        // Now write the org record — membership exists so the write rule passes.
         let org_path = crate::db::organization_path(workspace_code);
         let existing = client.get_json(&org_path).await?;
         if matches!(existing, Value::Null) {
@@ -723,35 +926,21 @@ impl AppState {
                 updated_at: Some(Utc::now()),
                 ..Default::default()
             };
-
             client.put_json(&org_path, &organization).await?;
         }
-        let membership = WorkspaceMembershipRecord {
-            firebase_uid: session.uid.clone(),
-            email: session.email.clone(),
-            organization_uid: workspace_code.to_string(),
-            role: "owner".to_string(),
-            updated_at: Some(Utc::now()),
-        };
-        client
-            .put_json(
-                &crate::db::organization_member_path(workspace_code, &session.uid),
-                &membership,
-            )
-            .await?;
-        client
-            .put_json(
-                &crate::db::membership_path(&session.uid, workspace_code),
-                &membership,
-            )
-            .await?;
         Ok(())
     }
 
     async fn workspace_exists(&self, workspace_code: &str) -> Result<bool, AppStateError> {
+        // Check membership path instead of organizations/ — membership is readable by the
+        // owning user without pre-existing org membership, avoiding a 403 on first account creation.
+        let session = match self.current_session().await {
+            Some(s) => s,
+            None => return Ok(false),
+        };
         let client = self.rtdb_client().await?;
-        let org_path = crate::db::organization_path(workspace_code);
-        let existing = client.get_json(&org_path).await?;
+        let membership_path = crate::db::membership_path(&session.uid, workspace_code);
+        let existing = client.get_json(&membership_path).await?;
         Ok(!matches!(existing, Value::Null))
     }
 
@@ -860,26 +1049,27 @@ impl AppState {
         firebase_uid: &str,
     ) -> Result<Option<WorkspaceMembershipRecord>, AppStateError> {
         let client = self.rtdb_client().await?;
-        let primary_path = crate::db::organization_member_path(organization_uid, firebase_uid);
-        let primary = client.get_json(&primary_path).await?;
-        if !matches!(primary, Value::Null) {
-            return serde_json::from_value(primary).map(Some).map_err(|err| {
+        // Read memberships/{uid}/{org} first — this path has a simple auth.uid rule
+        // that is guaranteed to be deployed and readable by the owning user.
+        let memberships_path = crate::db::membership_path(firebase_uid, organization_uid);
+        let memberships_val = client.get_json(&memberships_path).await?;
+        if !matches!(memberships_val, Value::Null) {
+            return serde_json::from_value(memberships_val).map(Some).map_err(|err| {
                 FirebaseError::Auth(format!("invalid membership record: {err}")).into()
             });
         }
 
-        let legacy_path = crate::db::membership_path(firebase_uid, organization_uid);
-        let legacy = client.get_json(&legacy_path).await?;
-        if matches!(legacy, Value::Null) {
-            return Ok(None);
+        // Fall back to organization_members/{org}/{uid} (may not be readable if rules
+        // haven't been deployed yet; failure here is non-fatal — return None).
+        let org_member_path = crate::db::organization_member_path(organization_uid, firebase_uid);
+        let org_member_val = client.get_json(&org_member_path).await.unwrap_or(Value::Null);
+        if !matches!(org_member_val, Value::Null) {
+            return serde_json::from_value(org_member_val).map(Some).map_err(|err| {
+                FirebaseError::Auth(format!("invalid membership record: {err}")).into()
+            });
         }
 
-        let membership: WorkspaceMembershipRecord =
-            serde_json::from_value(legacy).map_err(|err| {
-                FirebaseError::Auth(format!("invalid legacy membership record: {err}"))
-            })?;
-        client.put_json(&primary_path, &membership).await?;
-        Ok(Some(membership))
+        Ok(None)
     }
 
     async fn workspace_organization(
@@ -1239,6 +1429,13 @@ impl AppState {
     async fn authenticate_google_workspace_session(
         &self,
     ) -> Result<FirebaseSession, AppStateError> {
+        let (session, _tokens) = self.authenticate_google_workspace_session_with_tokens().await?;
+        Ok(session)
+    }
+
+    async fn authenticate_google_workspace_session_with_tokens(
+        &self,
+    ) -> Result<(FirebaseSession, crate::google_auth::GoogleDesktopAuthTokens), AppStateError> {
         let google = self.google_auth_client().await?;
         let firebase = self.firebase_auth_client().await?;
         let tokens = google.authenticate().await?;
@@ -1246,12 +1443,17 @@ impl AppState {
             .sign_in_with_google_id_token(&tokens.id_token, Some(&tokens.access_token))
             .await?;
         self.set_session(session.clone()).await?;
-        Ok(session)
+        Ok((session, tokens))
     }
 }
 
 fn is_local_session(session: Option<&FirebaseSession>) -> bool {
     session.map(is_local_session_ref).unwrap_or(false)
+}
+
+fn is_email_exists_error(err: &AppStateError) -> bool {
+    let msg = err.to_string().to_ascii_lowercase();
+    msg.contains("email_exists") || msg.contains("email already in use")
 }
 
 fn session_refresh_requires_reauth(error: &FirebaseError) -> bool {
@@ -2414,6 +2616,7 @@ mod tests {
                 config,
                 session: None,
                 grant_cache: None,
+                pending_google_tokens: None,
             })),
         };
         (dir, state)
