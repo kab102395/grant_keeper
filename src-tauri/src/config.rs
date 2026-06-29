@@ -66,10 +66,15 @@ impl ConfigStore {
                 .google_oauth_client_id
                 .clone()
                 .or_else(|| current.google_oauth_client_id.clone()),
-            anthropic_api_key: update
-                .anthropic_api_key
-                .clone()
-                .or_else(|| current.anthropic_api_key.clone()),
+            // An explicit empty string clears the key (user removed it in settings);
+            // an absent field (None) leaves the existing key untouched. Without this,
+            // partial updates can never delete the key — they'd always fall back to
+            // the current value.
+            anthropic_api_key: match update.anthropic_api_key.as_ref() {
+                Some(value) if value.trim().is_empty() => None,
+                Some(value) => Some(value.clone()),
+                None => current.anthropic_api_key.clone(),
+            },
             background_refresh_interval_ms: update
                 .background_refresh_interval_ms
                 .or(current.background_refresh_interval_ms),
@@ -288,6 +293,65 @@ mod tests {
         };
         let next = ConfigStore::apply_update(&current, &update);
         assert_eq!(next.anthropic_api_key.as_deref(), Some(xss_key));
+    }
+
+    #[test]
+    fn apply_update_empty_anthropic_key_clears_existing() {
+        // User removed the key in settings → frontend sends an empty string → cleared.
+        let current = LocalConfig {
+            anthropic_api_key: Some("sk-ant-existing".to_string()),
+            ..Default::default()
+        };
+        let update = ConfigUpdate {
+            anthropic_api_key: Some(String::new()),
+            ..Default::default()
+        };
+        let next = ConfigStore::apply_update(&current, &update);
+        assert_eq!(next.anthropic_api_key, None);
+    }
+
+    #[test]
+    fn apply_update_whitespace_anthropic_key_clears_existing() {
+        let current = LocalConfig {
+            anthropic_api_key: Some("sk-ant-existing".to_string()),
+            ..Default::default()
+        };
+        let update = ConfigUpdate {
+            anthropic_api_key: Some("   ".to_string()),
+            ..Default::default()
+        };
+        let next = ConfigStore::apply_update(&current, &update);
+        assert_eq!(next.anthropic_api_key, None);
+    }
+
+    #[test]
+    fn apply_update_absent_anthropic_key_preserves_existing() {
+        // Field omitted (None) → unchanged. This is the path other config updates take.
+        let current = LocalConfig {
+            anthropic_api_key: Some("sk-ant-existing".to_string()),
+            ..Default::default()
+        };
+        let update = ConfigUpdate {
+            anthropic_api_key: None,
+            setup_complete: Some(true),
+            ..Default::default()
+        };
+        let next = ConfigStore::apply_update(&current, &update);
+        assert_eq!(next.anthropic_api_key.as_deref(), Some("sk-ant-existing"));
+    }
+
+    #[test]
+    fn apply_update_new_anthropic_key_overrides_existing() {
+        let current = LocalConfig {
+            anthropic_api_key: Some("sk-ant-old".to_string()),
+            ..Default::default()
+        };
+        let update = ConfigUpdate {
+            anthropic_api_key: Some("sk-ant-new".to_string()),
+            ..Default::default()
+        };
+        let next = ConfigStore::apply_update(&current, &update);
+        assert_eq!(next.anthropic_api_key.as_deref(), Some("sk-ant-new"));
     }
 
     #[test]

@@ -1176,7 +1176,9 @@ export function useWorkspaceData({
       setAiSettingsStatus("saving");
       clearError();
       const nextConfig = await api.updateLocalConfig({
-        anthropic_api_key: aiSettingsDraft.anthropicApiKey.trim() || null,
+        // Send the trimmed value (empty string when cleared) rather than null, so the
+        // backend can tell "remove the key" apart from "field omitted / unchanged".
+        anthropic_api_key: aiSettingsDraft.anthropicApiKey.trim(),
         draft_generation_preference: aiSettingsDraft.draftPreference,
       });
       setConfig(nextConfig);
