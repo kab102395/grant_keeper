@@ -49,6 +49,8 @@ export const api = {
     invoke<FirebaseSession>("complete_google_account_link", { password }),
   refreshSession: () => invoke<FirebaseSession | null>("refresh_session"),
   sendPasswordResetEmail: (email: string) => invoke<void>("send_password_reset_email", { email }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    invoke<void>("change_password", { currentPassword, newPassword }),
   validateAnthropicApiKey: (apiKey: string) => invoke<void>("validate_anthropic_api_key", { apiKey }),
   clearSession: () => invoke<void>("clear_session"),
   validateSetup: () => invoke<SetupValidation>("validate_setup"),

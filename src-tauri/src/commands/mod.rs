@@ -168,6 +168,18 @@ pub async fn send_password_reset_email(
 }
 
 #[tauri::command]
+pub async fn change_password(
+    state: State<'_, AppState>,
+    current_password: String,
+    new_password: String,
+) -> Result<(), String> {
+    state
+        .change_password(current_password, new_password)
+        .await
+        .map_err(error_string)
+}
+
+#[tauri::command]
 pub async fn validate_anthropic_api_key(api_key: String) -> Result<(), String> {
     let client = ai::AnthropicClient::new(api_key);
     client.validate_api_key().await.map_err(error_string)

@@ -56,6 +56,15 @@ struct PasswordResetRequest<'a> {
 }
 
 #[derive(Debug, Serialize)]
+struct PasswordUpdateRequest<'a> {
+    #[serde(rename = "idToken")]
+    id_token: &'a str,
+    password: &'a str,
+    #[serde(rename = "returnSecureToken")]
+    return_secure_token: bool,
+}
+
+#[derive(Debug, Serialize)]
 struct GoogleIdpRequest<'a> {
     #[serde(rename = "postBody")]
     post_body: String,
@@ -150,6 +159,53 @@ impl FirebaseAuthClient {
         }
 
         Ok(())
+    }
+
+    /// Updates the password on the account identified by `id_token` via the Firebase
+    /// `accounts:update` endpoint. Returns a refreshed session — Firebase issues a new
+    /// id/refresh token pair on password change, so the caller must persist it or the
+    /// current session would be invalidated.
+    pub async fn change_password(
+        &self,
+        id_token: &str,
+        new_password: &str,
+    ) -> Result<FirebaseSession, FirebaseError> {
+        if self.api_key.trim().is_empty() {
+            return Err(FirebaseError::MissingApiKey);
+        }
+
+        let url = format!(
+            "{}/accounts:update?key={}",
+            self.sign_in_base_url, self.api_key
+        );
+
+        let response = self
+            .http
+            .post(url)
+            .json(&PasswordUpdateRequest {
+                id_token,
+                password: new_password,
+                return_secure_token: true,
+            })
+            .send()
+            .await?;
+
+        if !response.status().is_success() {
+            return Err(FirebaseError::Auth(
+                response.text().await.unwrap_or_default(),
+            ));
+        }
+
+        let payload: AuthResponse = response.json().await?;
+        let expires_in = payload.expires_in.parse::<i64>().unwrap_or(3600);
+
+        Ok(FirebaseSession {
+            email: payload.email,
+            uid: payload.local_id,
+            id_token: payload.id_token,
+            refresh_token: payload.refresh_token,
+            expires_at: Utc::now() + Duration::seconds(expires_in),
+        })
     }
 
     pub async fn sign_in_with_google_id_token(

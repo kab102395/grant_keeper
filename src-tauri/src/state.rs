@@ -410,6 +410,47 @@ impl AppState {
         Ok(())
     }
 
+    /// Changes the signed-in user's password. Re-authenticates with the current
+    /// password first so a walk-up attacker on an unlocked session can't change it,
+    /// and to obtain a fresh id token for the update. Persists the new session that
+    /// Firebase returns, since changing the password rotates the token pair.
+    pub async fn change_password(
+        &self,
+        current_password: String,
+        new_password: String,
+    ) -> Result<(), AppStateError> {
+        let session = self.current_session().await.ok_or_else(|| {
+            FirebaseError::Auth("missing active session for password change".to_string())
+        })?;
+        if is_local_session_ref(&session) {
+            return Err(FirebaseError::Auth(
+                "Password change is not available for the local dev profile.".to_string(),
+            )
+            .into());
+        }
+        if session.email.trim().is_empty() {
+            return Err(FirebaseError::Auth(
+                "This account has no email/password sign-in to change.".to_string(),
+            )
+            .into());
+        }
+
+        let auth = self.firebase_auth_client().await?;
+        // Re-authenticate to verify the current password and get a fresh id token.
+        let reauthed = auth
+            .sign_in_with_email_password(&session.email, &current_password)
+            .await?;
+        let updated = auth
+            .change_password(&reauthed.id_token, &new_password)
+            .await?;
+        let updated = FirebaseSession {
+            email: session.email.clone(),
+            ..updated
+        };
+        self.set_session(updated).await?;
+        Ok(())
+    }
+
     pub async fn start_dev_profile(&self) -> Result<FirebaseSession, AppStateError> {
         let uid = format!("dev-{}", Uuid::new_v4());
         let session = FirebaseSession {
@@ -2748,6 +2789,36 @@ mod tests {
             .unwrap();
         let result = state.refresh_session_if_needed().await.unwrap();
         assert_eq!(result.unwrap().id_token, "firebase-id-token");
+    }
+
+    #[tokio::test]
+    async fn change_password_rejected_without_session() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        let err = state
+            .change_password("old".to_string(), "newpassword".to_string())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().to_lowercase().contains("missing active session"));
+    }
+
+    #[tokio::test]
+    async fn change_password_rejected_for_local_dev_session() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        state
+            .set_session(FirebaseSession {
+                email: "dev@grantkeeper.local".to_string(),
+                uid: "dev-uid".to_string(),
+                id_token: "dev:synthetic".to_string(),
+                refresh_token: String::new(),
+                expires_at: Utc::now() + Duration::days(3650),
+            })
+            .await
+            .unwrap();
+        let err = state
+            .change_password("old".to_string(), "newpassword".to_string())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().to_lowercase().contains("local dev profile"));
     }
 
     #[tokio::test]

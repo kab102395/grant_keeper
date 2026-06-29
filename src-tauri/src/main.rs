@@ -42,6 +42,7 @@ fn main() {
             commands::join_workspace_with_google,
             commands::refresh_session,
             commands::send_password_reset_email,
+            commands::change_password,
             commands::validate_anthropic_api_key,
             commands::clear_session,
             commands::validate_setup,

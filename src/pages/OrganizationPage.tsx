@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { LocalConfig, OrganizationRecord, WorkspaceInviteRecord } from "../lib/types";
 import {
@@ -83,6 +83,10 @@ export function OrganizationPage({
   aiSettingsMessage,
   autosaveStatus,
   autosaveAt,
+  onChangePassword,
+  passwordChangeStatus,
+  passwordChangeMessage,
+  passwordChangeAvailable,
 }: {
   organization: OrganizationRecord | null;
   organizationForm: OrganizationRecord | null;
@@ -106,6 +110,10 @@ export function OrganizationPage({
   aiSettingsMessage: string | null;
   autosaveStatus: "idle" | "saving" | "saved" | "error";
   autosaveAt: string | null;
+  onChangePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  passwordChangeStatus: "idle" | "saving" | "saved" | "error";
+  passwordChangeMessage: string | null;
+  passwordChangeAvailable: boolean;
 }) {
   const profile = organizationForm ?? organization;
   const completeness = useMemo(() => orgCompletenessScore(profile), [profile]);
@@ -113,6 +121,9 @@ export function OrganizationPage({
   const missingLabels = missingFields.map((field) => ORG_FIELD_LABELS[field]);
   const filledFields = 12 - missingFields.length;
   const [inviteCopyState, setInviteCopyState] = useState<"idle" | "token" | "message" | "error">("idle");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   async function copyInvite(kind: "token" | "message") {
     if (!workspaceInvite?.invite_token) return;
@@ -126,6 +137,28 @@ export function OrganizationPage({
       window.setTimeout(() => setInviteCopyState("idle"), 2000);
     }
   }
+
+  const passwordsMismatch = newPassword.length > 0 && confirmPassword.length > 0 && newPassword !== confirmPassword;
+  const canSubmitPassword =
+    currentPassword.trim().length > 0 &&
+    newPassword.length >= 6 &&
+    newPassword === confirmPassword &&
+    passwordChangeStatus !== "saving";
+
+  async function submitPasswordChange() {
+    if (!canSubmitPassword) return;
+    await onChangePassword(currentPassword, newPassword);
+  }
+
+  // Clear the password fields only after a successful change; on error the user
+  // keeps their input so they can correct just the wrong field.
+  useEffect(() => {
+    if (passwordChangeStatus === "saved") {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    }
+  }, [passwordChangeStatus]);
 
   function updateTextField(key: keyof OrganizationRecord, value: string) {
     setOrganizationForm((current) => (current ? { ...current, [key]: value } : current));
@@ -328,6 +361,72 @@ export function OrganizationPage({
               </span>
             </div>
           </section>
+
+          {passwordChangeAvailable ? (
+            <section className="panel-block panel-block-soft ai-settings-panel">
+              <div className="detail-header">
+                <div>
+                  <p className="eyebrow">Account security</p>
+                  <h4>Change your password</h4>
+                </div>
+                <span className="status-pill">{passwordChangeStatus === "saved" ? "Updated" : "Account action"}</span>
+              </div>
+
+              <p className="muted">
+                Update the password for your email sign-in. You'll confirm your current password first; your session stays signed in.
+              </p>
+
+              <div className="form-grid">
+                <label className="grid-span-2">
+                  Current password
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Your current password"
+                  />
+                </label>
+                <label>
+                  New password
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 6 characters"
+                  />
+                </label>
+                <label>
+                  Confirm new password
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter new password"
+                  />
+                </label>
+              </div>
+
+              <div className="surface-actions org-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() => void submitPasswordChange()}
+                  disabled={!canSubmitPassword}
+                >
+                  {passwordChangeStatus === "saving" ? "Updating..." : "Update password"}
+                </button>
+              </div>
+
+              <div className="info-row">
+                <span>Status: {passwordChangeStatus}</span>
+                <span>
+                  {passwordsMismatch
+                    ? "New password and confirmation don't match."
+                    : passwordChangeMessage ?? "Use at least 6 characters for the new password."}
+                </span>
+              </div>
+            </section>
+          ) : null}
 
           <section className="panel-block panel-block-soft ai-settings-panel">
             <div className="detail-header">

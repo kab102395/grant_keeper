@@ -252,6 +252,9 @@ export type WorkspaceDataResult = {
   saveSetupWithGoogle: () => Promise<void>;
   completeGoogleLink: (password: string) => Promise<void>;
   requestPasswordReset: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  passwordChangeStatus: "idle" | "saving" | "saved" | "error";
+  passwordChangeMessage: string | null;
   useDevProfile: () => Promise<void>;
   clearSessionAndReload: () => Promise<void>;
   clearError: () => void;
@@ -318,6 +321,8 @@ export function useWorkspaceData({
   const [setupSupportMessage, setSetupSupportMessage] = useState<string | null>(null);
   const [googleAuthStatus, setGoogleAuthStatus] = useState<"idle" | "saving" | "saved" | "error" | "needs_link">("idle");
   const [googleLinkEmail, setGoogleLinkEmail] = useState<string | null>(null);
+  const [passwordChangeStatus, setPasswordChangeStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [passwordChangeMessage, setPasswordChangeMessage] = useState<string | null>(null);
   const [discoveryFilters, setDiscoveryFilters] = useState<DiscoveryFilters>({
     query: "",
     status: "open",
@@ -913,6 +918,31 @@ export function useWorkspaceData({
     }
   }
 
+  async function changePassword(currentPassword: string, newPassword: string) {
+    try {
+      clearError();
+      setPasswordChangeStatus("saving");
+      setPasswordChangeMessage(null);
+      await api.changePassword(currentPassword, newPassword);
+      setPasswordChangeStatus("saved");
+      setPasswordChangeMessage("Password updated. Your current session stays signed in.");
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      const normalized = raw.toLowerCase();
+      let message = classifyAppError(err).message;
+      if (
+        normalized.includes("invalid_password") ||
+        normalized.includes("invalid_login_credentials")
+      ) {
+        message = "Current password is incorrect.";
+      } else if (normalized.includes("weak_password")) {
+        message = "New password is too weak — use at least 6 characters.";
+      }
+      setPasswordChangeStatus("error");
+      setPasswordChangeMessage(message);
+    }
+  }
+
   async function recoverFromError() {
     if (recoveryAction === "sign_in") {
       clearError();
@@ -1464,6 +1494,9 @@ export function useWorkspaceData({
     saveSetupWithGoogle,
     completeGoogleLink,
     requestPasswordReset,
+    changePassword,
+    passwordChangeStatus,
+    passwordChangeMessage,
     useDevProfile,
     clearSessionAndReload,
     clearError,

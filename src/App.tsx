@@ -352,6 +352,10 @@ export default function App() {
               aiSettingsMessage={data.aiSettingsMessage}
               autosaveStatus={data.organizationAutosaveStatus}
               autosaveAt={data.organizationAutosavedAt}
+              onChangePassword={data.changePassword}
+              passwordChangeStatus={data.passwordChangeStatus}
+              passwordChangeMessage={data.passwordChangeMessage}
+              passwordChangeAvailable={data.snapshot?.session.mode === "firebase"}
             />
           ) : null}
 
