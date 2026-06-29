@@ -191,7 +191,7 @@ export function SetupPage({
         ) : null}
       </div>
 
-      {googleAuthStatus === "needs_link" && googleLinkEmail ? (
+      {googleLinkEmail ? (
         <div className="surface-copy">
           <p>
             <strong>Link your Google account</strong><br />

@@ -367,6 +367,7 @@ export function useWorkspaceData({
   const workspaceCacheRef = useRef(new Map<string, WorkspaceCacheEntry>());
   const refreshCurrentSurfaceRef = useRef(refreshCurrentSurface);
   const refreshingRef = useRef(refreshing);
+  const handleWorkspaceErrorRef = useRef(handleWorkspaceError);
   const DEFAULT_REFRESH_INTERVAL_MS = 120_000;
 
   function rememberWorkspaceCache(surface: Surface, orgUidValue: string | null, entry: Omit<WorkspaceCacheEntry, "updatedAt">) {
@@ -1010,9 +1011,18 @@ export function useWorkspaceData({
         return;
       }
       try {
+        // Keep the Firebase token warm even when the surface data is cache-fresh, so
+        // an idle-but-open window doesn't drift past the 1-hour token lifetime. The
+        // backend only hits the network when the token is actually near expiry.
+        await api.refreshSession();
         await refreshCurrentSurfaceRef.current();
-      } catch {
-        // background refresh should fail closed without surfacing noise
+      } catch (err) {
+        // A revoked or expired refresh token can't be recovered silently — route the
+        // user to sign-in instead of leaving them staring at stale data. All other
+        // background errors still fail closed without surfacing noise.
+        if (!cancelled && classifyAppError(err).kind === "reauth") {
+          await handleWorkspaceErrorRef.current(err, { fallbackToSetup: true });
+        }
       }
     };
 
@@ -1397,6 +1407,7 @@ export function useWorkspaceData({
 
   refreshCurrentSurfaceRef.current = refreshCurrentSurface;
   refreshingRef.current = refreshing;
+  handleWorkspaceErrorRef.current = handleWorkspaceError;
 
   const grantsByPortalId = useMemo(() => new Map(grants.map((grant) => [grant.portal_id, grant])), [grants]);
   const watchlistedPortalIds = useMemo(() => new Set(watchlist.map((entry) => entry.portal_id)), [watchlist]);

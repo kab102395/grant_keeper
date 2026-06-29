@@ -151,11 +151,9 @@ pub async fn create_workspace_invite(
 pub async fn refresh_session(
     state: State<'_, AppState>,
 ) -> Result<Option<FirebaseSession>, String> {
-    let auth = state.firebase_auth_client().await.map_err(error_string)?;
-    state
-        .ensure_valid_session(&auth)
-        .await
-        .map_err(error_string)
+    // Route through the same lock-protected refresh path the RTDB clients use, so the
+    // periodic keepalive can't double-refresh against an on-demand refresh.
+    state.refresh_session_if_needed().await.map_err(error_string)
 }
 
 #[tauri::command]

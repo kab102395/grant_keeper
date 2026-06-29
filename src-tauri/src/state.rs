@@ -39,6 +39,9 @@ pub enum AppStateError {
 #[derive(Debug, Clone)]
 pub struct AppState {
     inner: Arc<RwLock<AppStateInner>>,
+    // Serializes Firebase token refreshes so a burst of concurrent RTDB calls near
+    // token expiry triggers exactly one network refresh instead of a thundering herd.
+    refresh_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 #[derive(Debug)]
@@ -105,6 +108,7 @@ impl AppState {
                 grant_cache: None,
                 pending_google_tokens: None,
             })),
+            refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -316,7 +320,52 @@ impl AppState {
         Ok(GoogleDesktopAuthClient::new(client_id, client_secret))
     }
 
+    /// Proactively refreshes an expiring or already-expired Firebase session before
+    /// it is used to authenticate an RTDB call. This is the single choke point that
+    /// keeps every RTDB operation working past the 1-hour ID-token lifetime: callers
+    /// build their client through `rtdb_client`/`rtdb_service_client`, which run this
+    /// first. No-op for local/dev sessions and when there is no session at all.
+    ///
+    /// Concurrency: a burst of RTDB calls near expiry all see `is_expiring_soon`, but
+    /// the refresh lock collapses them into one network refresh; latecomers re-check
+    /// under the lock and find the session already fresh.
+    async fn ensure_fresh_session(&self) -> Result<(), AppStateError> {
+        // Fast path: decide whether a refresh is even needed without taking the lock.
+        if !self.session_needs_refresh().await {
+            return Ok(());
+        }
+
+        let _lock = self.refresh_lock.lock().await;
+
+        // Re-check under the lock — another task may have refreshed while we waited.
+        if !self.session_needs_refresh().await {
+            return Ok(());
+        }
+
+        let auth = self.firebase_auth_client().await?;
+        self.ensure_valid_session(&auth).await?;
+        Ok(())
+    }
+
+    async fn session_needs_refresh(&self) -> bool {
+        let guard = self.inner.read().await;
+        match guard.session.as_ref() {
+            Some(session) => !is_local_session_ref(session) && session.is_expiring_soon(),
+            None => false,
+        }
+    }
+
+    /// Public entry point for the explicit `refresh_session` command and the frontend
+    /// keepalive. Refreshes only when the token is near expiry, then returns whatever
+    /// session is now current (which may be `None` if the refresh token was revoked
+    /// and the session was cleared).
+    pub async fn refresh_session_if_needed(&self) -> Result<Option<FirebaseSession>, AppStateError> {
+        self.ensure_fresh_session().await?;
+        Ok(self.current_session().await)
+    }
+
     pub async fn rtdb_client(&self) -> Result<RealtimeDatabaseClient, AppStateError> {
+        self.ensure_fresh_session().await?;
         let guard = self.inner.read().await;
         let database_url = guard.config.firebase_rtdb_url.clone().unwrap_or_default();
         let token = resolve_service_account_token(true, guard.session.as_ref()).await?;
@@ -324,6 +373,7 @@ impl AppState {
     }
 
     pub async fn rtdb_service_client(&self) -> Result<RealtimeDatabaseClient, AppStateError> {
+        self.ensure_fresh_session().await?;
         let guard = self.inner.read().await;
         let database_url = guard.config.firebase_rtdb_url.clone().unwrap_or_default();
         let token = resolve_service_account_token(true, guard.session.as_ref()).await?;
@@ -2618,8 +2668,103 @@ mod tests {
                 grant_cache: None,
                 pending_google_tokens: None,
             })),
+            refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
         };
         (dir, state)
+    }
+
+    fn firebase_session_expiring_in(delta: Duration) -> FirebaseSession {
+        FirebaseSession {
+            email: "user@example.com".to_string(),
+            uid: "uid-firebase".to_string(),
+            id_token: "firebase-id-token".to_string(),
+            refresh_token: "firebase-refresh-token".to_string(),
+            expires_at: Utc::now() + delta,
+        }
+    }
+
+    // ── session refresh decision (no network) ─────────────────────────────
+
+    #[tokio::test]
+    async fn session_needs_refresh_false_for_healthy_firebase_session() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        state
+            .set_session(firebase_session_expiring_in(Duration::hours(1)))
+            .await
+            .unwrap();
+        assert!(!state.session_needs_refresh().await);
+    }
+
+    #[tokio::test]
+    async fn session_needs_refresh_true_when_expiring_within_window() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        state
+            .set_session(firebase_session_expiring_in(Duration::minutes(2)))
+            .await
+            .unwrap();
+        assert!(state.session_needs_refresh().await);
+    }
+
+    #[tokio::test]
+    async fn session_needs_refresh_true_when_already_expired() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        state
+            .set_session(firebase_session_expiring_in(Duration::minutes(-10)))
+            .await
+            .unwrap();
+        assert!(state.session_needs_refresh().await);
+    }
+
+    #[tokio::test]
+    async fn session_needs_refresh_false_for_local_dev_session_even_when_expired() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        // Dev/local sessions carry a synthetic token and must never hit the network.
+        state
+            .set_session(FirebaseSession {
+                email: "dev@grantkeeper.local".to_string(),
+                uid: "dev-uid".to_string(),
+                id_token: "dev:synthetic".to_string(),
+                refresh_token: String::new(),
+                expires_at: Utc::now() - Duration::minutes(30),
+            })
+            .await
+            .unwrap();
+        assert!(!state.session_needs_refresh().await);
+    }
+
+    #[tokio::test]
+    async fn session_needs_refresh_false_when_no_session() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        assert!(!state.session_needs_refresh().await);
+    }
+
+    #[tokio::test]
+    async fn refresh_session_if_needed_is_noop_for_healthy_session() {
+        // A healthy session is returned untouched and no refresh (network) is attempted.
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        state
+            .set_session(firebase_session_expiring_in(Duration::hours(1)))
+            .await
+            .unwrap();
+        let result = state.refresh_session_if_needed().await.unwrap();
+        assert_eq!(result.unwrap().id_token, "firebase-id-token");
+    }
+
+    #[tokio::test]
+    async fn refresh_session_if_needed_leaves_local_session_intact() {
+        let (_dir, state) = temp_app_state(LocalConfig::default());
+        state
+            .set_session(FirebaseSession {
+                email: "dev@grantkeeper.local".to_string(),
+                uid: "dev-uid".to_string(),
+                id_token: "dev:synthetic".to_string(),
+                refresh_token: String::new(),
+                expires_at: Utc::now() - Duration::minutes(30),
+            })
+            .await
+            .unwrap();
+        let result = state.refresh_session_if_needed().await.unwrap();
+        assert_eq!(result.unwrap().id_token, "dev:synthetic");
     }
 
     #[tokio::test]
