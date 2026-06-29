@@ -196,6 +196,40 @@ export function surfaceTitle(surface: Surface) {
   return SURFACES.find((entry) => entry.id === surface)?.label ?? surface;
 }
 
+/**
+ * Builds the ready-to-send invite message an owner copies and pastes to a colleague.
+ * Kept pure so it is easy to test and reuse outside the component.
+ */
+export function buildInviteMessage(token: string, organizationName?: string | null): string {
+  const workspace = organizationName?.trim() ? `the "${organizationName.trim()}"` : "our";
+  return [
+    `You've been invited to join ${workspace} Grant Keeper workspace.`,
+    "",
+    "To join:",
+    "1. Open Grant Keeper and choose \"Join workspace\"",
+    `2. Enter this invite token: ${token}`,
+    "3. Sign in with your email and password or with Google",
+    "",
+    "This token is single-use and stops working once it's claimed.",
+  ].join("\n");
+}
+
+/**
+ * Writes text to the clipboard, resolving to whether it succeeded. Wrapped so callers
+ * get a boolean instead of a throwing promise (clipboard access can be blocked).
+ */
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to report failure
+  }
+  return false;
+}
+
 export function formatTimestamp(value: string | null | undefined) {
   if (!value) return "not set";
   const date = new Date(value);

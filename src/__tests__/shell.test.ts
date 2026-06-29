@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildInviteMessage,
   composeDraftBody,
   DEFAULT_DISCOVERY_FILTERS,
   exportDraftFileName,
@@ -88,6 +89,33 @@ describe("formatTimestamp", () => {
 
   it("returns raw value for unparseable string", () => {
     expect(formatTimestamp("not-a-date")).toBe("not-a-date");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// buildInviteMessage
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("buildInviteMessage", () => {
+  it("includes the invite token verbatim", () => {
+    const msg = buildInviteMessage("gk-invite-123");
+    expect(msg).toContain("gk-invite-123");
+  });
+
+  it("names the workspace when an org name is provided", () => {
+    const msg = buildInviteMessage("tok", "Helping Hands");
+    expect(msg).toContain('the "Helping Hands" Grant Keeper workspace');
+  });
+
+  it("falls back to a generic phrasing when org name is blank", () => {
+    expect(buildInviteMessage("tok", "  ")).toContain("our Grant Keeper workspace");
+    expect(buildInviteMessage("tok", null)).toContain("our Grant Keeper workspace");
+  });
+
+  it("mentions the join steps and single-use nature", () => {
+    const msg = buildInviteMessage("tok");
+    expect(msg).toContain("Join workspace");
+    expect(msg.toLowerCase()).toContain("single-use");
   });
 });
 

@@ -1,7 +1,13 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { LocalConfig, OrganizationRecord, WorkspaceInviteRecord } from "../lib/types";
-import { formatTimestamp, orgCompletenessScore, orgMissingFields } from "../lib/shell";
+import {
+  buildInviteMessage,
+  copyTextToClipboard,
+  formatTimestamp,
+  orgCompletenessScore,
+  orgMissingFields,
+} from "../lib/shell";
 
 const ORG_FIELD_LABELS: Record<keyof OrganizationRecord, string> = {
   uid: "Workspace UID",
@@ -106,6 +112,20 @@ export function OrganizationPage({
   const missingFields = useMemo(() => orgMissingFields(profile), [profile]);
   const missingLabels = missingFields.map((field) => ORG_FIELD_LABELS[field]);
   const filledFields = 12 - missingFields.length;
+  const [inviteCopyState, setInviteCopyState] = useState<"idle" | "token" | "message" | "error">("idle");
+
+  async function copyInvite(kind: "token" | "message") {
+    if (!workspaceInvite?.invite_token) return;
+    const text =
+      kind === "token"
+        ? workspaceInvite.invite_token
+        : buildInviteMessage(workspaceInvite.invite_token, profile?.name);
+    const ok = await copyTextToClipboard(text);
+    setInviteCopyState(ok ? kind : "error");
+    if (ok) {
+      window.setTimeout(() => setInviteCopyState("idle"), 2000);
+    }
+  }
 
   function updateTextField(key: keyof OrganizationRecord, value: string) {
     setOrganizationForm((current) => (current ? { ...current, [key]: value } : current));
@@ -288,9 +308,24 @@ export function OrganizationPage({
               </label>
             </div>
 
+            {workspaceInvite?.invite_token ? (
+              <div className="surface-actions org-actions">
+                <button type="button" className="secondary" onClick={() => void copyInvite("token")}>
+                  {inviteCopyState === "token" ? "Token copied!" : "Copy token"}
+                </button>
+                <button type="button" className="secondary" onClick={() => void copyInvite("message")}>
+                  {inviteCopyState === "message" ? "Message copied!" : "Copy invite message"}
+                </button>
+              </div>
+            ) : null}
+
             <div className="info-row">
               <span>Status: {workspaceInviteStatus}</span>
-              <span>{workspaceInviteMessage ?? "Only workspace owners can generate join tokens."}</span>
+              <span>
+                {inviteCopyState === "error"
+                  ? "Couldn't reach the clipboard — select the token and copy it manually."
+                  : workspaceInviteMessage ?? "Only workspace owners can generate join tokens."}
+              </span>
             </div>
           </section>
 
