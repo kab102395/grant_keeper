@@ -82,9 +82,9 @@ describe("formatTimestamp", () => {
 
   it("formats a valid ISO date string", () => {
     const result = formatTimestamp("2026-06-15T12:00:00Z");
+    expect(result).not.toBeNull();
     expect(typeof result).toBe("string");
-    expect(result).not.toBe("not set");
-    expect(result.length).toBeGreaterThan(0);
+    expect((result as string).length).toBeGreaterThan(0);
   });
 
   it("returns raw value for unparseable string", () => {

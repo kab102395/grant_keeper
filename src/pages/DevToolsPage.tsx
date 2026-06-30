@@ -217,7 +217,7 @@ export function DevToolsPage({
               <small>Kind: {titleCase(source.kind)}</small>
               <small>Enabled: {source.enabled ? "yes" : "no"}</small>
               <small>Grants linked: {source.grant_count}</small>
-              <small>Last run: {formatTimestamp(source.last_run_at)}</small>
+              <small>Last run: {formatTimestamp(source.last_run_at) ?? "—"}</small>
               <small>Status: {source.last_status ?? "—"}</small>
               {source.health_note ? <small>{source.health_note}</small> : null}
               {source.last_error ? <small className="error-text">{source.last_error}</small> : null}

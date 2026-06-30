@@ -1,20 +1,17 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { DraftRecord, GrantRecord, LocalConfig } from "../lib/types";
 import { formatTimestamp } from "../lib/shell";
 import { DraftEditor } from "../components/DraftEditor";
 import { draftSchemaSummary, resolveGrantDraftSchema } from "../lib/draftSchema";
+import { GrantStatusPill } from "../components/ui";
 
 function draftGenerationLabel(mode: DraftRecord["generation_mode"]) {
   switch (mode) {
-    case "ai":
-      return "AI generated";
-    case "local_scaffold":
-      return "Local scaffold";
-    case "manual":
-      return "Manual";
-    default:
-      return "Unknown origin";
+    case "ai": return "AI";
+    case "local_scaffold": return "Scaffold";
+    case "manual": return "Manual";
+    default: return "Unknown";
   }
 }
 
@@ -43,177 +40,180 @@ export function DraftsPage({
   onExportDraft: (draft: DraftRecord) => Promise<void>;
   onDeleteDraft: (draftId: string) => Promise<void>;
 }) {
-  const selectedDraftIndex = useMemo(
-    () => drafts.findIndex((draft) => draft.draft_id === selectedDraft?.draft_id),
-    [drafts, selectedDraft?.draft_id],
-  );
-  const hasPreviousDraft = selectedDraftIndex > 0;
-  const hasNextDraft = selectedDraftIndex >= 0 && selectedDraftIndex < drafts.length - 1;
+  const [grantPanelOpen, setGrantPanelOpen] = useState(false);
+  const [railCollapsed, setRailCollapsed] = useState(false);
+
   const linkedGrant = selectedDraft?.grant_portal_id && selectedGrant?.portal_id === selectedDraft.grant_portal_id ? selectedGrant : null;
   const linkedSchema = resolveGrantDraftSchema(linkedGrant);
 
+  const selectedDraftIndex = useMemo(
+    () => drafts.findIndex((d) => d.draft_id === selectedDraft?.draft_id),
+    [drafts, selectedDraft?.draft_id],
+  );
+
   async function selectRelativeDraft(direction: -1 | 1) {
-    if (selectedDraftIndex < 0) {
-      return;
-    }
-    const nextIndex = selectedDraftIndex + direction;
-    if (nextIndex < 0 || nextIndex >= drafts.length) {
-      return;
-    }
-    await onSelectDraft(drafts[nextIndex]);
+    const next = selectedDraftIndex + direction;
+    if (next < 0 || next >= drafts.length) return;
+    await onSelectDraft(drafts[next]);
   }
 
   return (
-    <div className="surface-stack draft-page">
-      <section className="panel-block panel-block-soft draft-hero">
-        <div className="draft-hero-copy">
-          <p className="eyebrow">Draft workspace</p>
-          <h3>{selectedDraft?.title ?? "Pick a draft to begin"}</h3>
-          <p className="muted">
-            Each draft stays tied to one grant. Move between drafts on the left, edit in the center, and keep the linked grant visible
-            on the right. The queue reads from the cached catalog stored in RTDB.
-          </p>
-          {selectedDraft ? (
-            <div className="info-row">
-              <span>Draft ID: {selectedDraft.draft_id}</span>
-              <span>Version: {selectedDraft.version}</span>
-              <span>Mode: {draftGenerationLabel(selectedDraft.generation_mode)}</span>
-              <span>Updated: {formatTimestamp(selectedDraft.updated_at)}</span>
-              <span>{config?.last_sync_at ? `Catalog synced ${formatTimestamp(config.last_sync_at)}` : "No live sync recorded"}</span>
-              <span>
-                Next draft mode:{" "}
-                {config?.draft_generation_preference === "ai" && config?.anthropic_api_key
-                  ? "Anthropic AI"
-                  : config?.draft_generation_preference === "ai"
-                    ? "AI requested but key missing"
-                    : "Local scaffold"}
-              </span>
-            </div>
-          ) : (
-            <p className="muted">Choose a draft from the rail to open the editor.</p>
-          )}
-          {linkedGrant ? (
-            <div className="chip-row detail-chip-row">
-              <span className="chip active">{linkedSchema.schema_name}</span>
-              {draftSchemaSummary(linkedSchema).map((item) => (
-                <span key={item} className="chip">
-                  {item}
-                </span>
-              ))}
-            </div>
-          ) : null}
-        </div>
-
-        <div className="draft-hero-actions">
-          <button type="button" className="secondary" onClick={() => void selectRelativeDraft(-1)} disabled={!hasPreviousDraft}>
-            Back draft
-          </button>
-          <button type="button" className="secondary" onClick={() => void selectRelativeDraft(1)} disabled={!hasNextDraft}>
-            Forward draft
-          </button>
+    <div className={railCollapsed ? "drafts-shell drafts-shell-collapsed" : "drafts-shell"}>
+      {/* Left rail — draft list */}
+      <aside className={railCollapsed ? "drafts-rail drafts-rail-collapsed" : "drafts-rail"}>
+        <div className="drafts-rail-header">
+          {!railCollapsed && <p className="eyebrow">Draft queue</p>}
+          {!railCollapsed && <span className="status-chip status-chip-neutral">{drafts.length} total</span>}
           <button
             type="button"
-            className="primary"
-            onClick={() => void onOpenGrant(selectedDraft?.grant_portal_id ?? "")}
-            disabled={!selectedDraft?.grant_portal_id}
+            className="drafts-rail-toggle"
+            onClick={() => setRailCollapsed((c) => !c)}
+            title={railCollapsed ? "Show draft list" : "Hide draft list"}
           >
-            Open source grant
+            <RailCollapseIcon collapsed={railCollapsed} />
           </button>
         </div>
-      </section>
 
-      <div className="draft-workspace">
-        <aside className="surface-column draft-rail">
-          <div className="panel-block panel-block-soft draft-rail-header">
-            <div className="detail-header">
-              <div>
-                <p className="eyebrow">Draft queue</p>
-                <h4>Recent drafts</h4>
-              </div>
-              <span className="status-pill">{drafts.length} total</span>
-            </div>
-            <p className="muted">The current org's draft queue stays compact so the selected draft remains the focus.</p>
-          </div>
-
-          <div className="draft-list">
-            {drafts.length === 0 ? (
-              <p className="muted">No drafts found.</p>
-            ) : (
-              drafts.map((draft) => (
+        {!railCollapsed && (drafts.length === 0 ? (
+          <p className="muted drafts-empty">No drafts yet. Create one from a grant.</p>
+        ) : (
+          <div className="drafts-list">
+            {drafts.map((draft) => {
+              const isActive = draft.draft_id === selectedDraft?.draft_id;
+              const label = draft.title
+                ?? (draft.grant_portal_id ? `Draft — ${draft.grant_portal_id.slice(0, 16)}…` : "Untitled draft");
+              const ts = formatTimestamp(draft.updated_at);
+              return (
                 <button
                   key={draft.draft_id}
                   type="button"
-                  className={selectedDraft?.draft_id === draft.draft_id ? "draft-list-item active" : "draft-list-item"}
+                  className={isActive ? "draft-card draft-card-active" : "draft-card"}
                   onClick={() => void onSelectDraft(draft)}
                 >
-                  <span className="draft-list-top">
-                    <strong>{draft.title ?? draft.draft_id}</strong>
+                  <div className="draft-card-top">
+                    <strong className="draft-card-title">{label}</strong>
+                    <span className="draft-card-mode">{draftGenerationLabel(draft.generation_mode)}</span>
+                  </div>
+                  <div className="draft-card-meta">
                     <span>{draft.status}</span>
-                  </span>
-                  <span className="draft-list-meta">
-                    {formatTimestamp(draft.updated_at)} | {draftGenerationLabel(draft.generation_mode)}
-                  </span>
-                  <span className="draft-list-note">{draft.provenance_note ?? draft.notes ?? "No notes"}</span>
-                  <span className="draft-list-link">Grant Portal ID: {draft.grant_portal_id || "—"}</span>
+                    {ts && <span>{ts}</span>}
+                  </div>
                 </button>
-              ))
-            )}
+              );
+            })}
           </div>
-        </aside>
+        ))}
 
-        <main className="draft-editor-column">
-          <DraftEditor
-            draft={selectedDraft}
-            grant={linkedGrant}
-            setDraft={setSelectedDraft}
-            onSaveDraft={onSaveDraft}
-            onAutosaveDraft={onAutosaveDraft}
-            onExportDraft={onExportDraft}
-            onDeleteDraft={onDeleteDraft}
-          />
-        </main>
+        {!railCollapsed && selectedDraft && (
+          <div className="drafts-rail-nav">
+            <button type="button" className="secondary" onClick={() => void selectRelativeDraft(-1)} disabled={selectedDraftIndex <= 0}>
+              ← Prev
+            </button>
+            <button type="button" className="secondary" onClick={() => void selectRelativeDraft(1)} disabled={selectedDraftIndex >= drafts.length - 1}>
+              Next →
+            </button>
+          </div>
+        )}
+      </aside>
 
-        <aside className="panel-block panel-block-soft draft-grant-panel">
-          <div className="detail-header">
-            <div>
-              <p className="eyebrow">Grant panel</p>
-              <h4>{linkedGrant?.title ?? "No grant loaded"}</h4>
+      {/* Main area — editor + optional grant drawer */}
+      <div className="drafts-main">
+        {selectedDraft ? (
+          <>
+            {/* Editor toolbar */}
+            <div className="drafts-toolbar">
+              <div className="drafts-toolbar-left">
+                <p className="eyebrow" style={{ margin: 0 }}>Editing</p>
+                <strong className="drafts-toolbar-title">
+                  {selectedDraft.title ?? "Untitled draft"}
+                </strong>
+                {linkedSchema && (
+                  <div className="chip-row" style={{ margin: 0 }}>
+                    <span className="chip active">{linkedSchema.schema_name}</span>
+                    {draftSchemaSummary(linkedSchema).map((item) => (
+                      <span key={item} className="chip">{item}</span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="drafts-toolbar-actions">
+                {linkedGrant && (
+                  <button
+                    type="button"
+                    className={grantPanelOpen ? "secondary drafts-grant-toggle active" : "secondary drafts-grant-toggle"}
+                    onClick={() => setGrantPanelOpen((o) => !o)}
+                  >
+                    {grantPanelOpen ? "Hide grant" : "View grant"}
+                  </button>
+                )}
+                {selectedDraft.grant_portal_id && (
+                  <button type="button" className="ghost" onClick={() => void onOpenGrant(selectedDraft.grant_portal_id ?? "")}>
+                    Open in Discovery →
+                  </button>
+                )}
+              </div>
             </div>
-            {linkedGrant ? <span className="status-pill">{linkedGrant.status ?? "open"}</span> : null}
-          </div>
 
-          {linkedGrant ? (
-            <div className="draft-grant-summary">
-              <div className="draft-grant-facts">
-                <div>
-                  <span className="eyebrow">Agency</span>
-                  <strong>{linkedGrant.agency_dept ?? "Unknown agency"}</strong>
-                </div>
-                <div>
-                  <span className="eyebrow">Deadline</span>
-                  <strong>{linkedGrant.deadline_is_ongoing ? "Ongoing" : linkedGrant.application_deadline ?? "Not set"}</strong>
-                </div>
-                <div>
-                  <span className="eyebrow">Funding</span>
-                  <strong>{linkedGrant.est_amounts ?? linkedGrant.est_avail_funds ?? "Not set"}</strong>
-                </div>
-                <div>
-                  <span className="eyebrow">Eligibility</span>
-                  <strong>{linkedGrant.applicant_types.length ? linkedGrant.applicant_types.join(", ") : "Not set"}</strong>
+            {/* Grant reference drawer */}
+            {linkedGrant && grantPanelOpen && (
+              <div className="drafts-grant-drawer">
+                <div className="drafts-grant-drawer-inner">
+                  <div className="drafts-grant-header">
+                    <div>
+                      <p className="eyebrow">Grant reference</p>
+                      <strong>{linkedGrant.title}</strong>
+                      <p className="muted">{linkedGrant.agency_dept ?? "Unknown agency"}</p>
+                    </div>
+                    <GrantStatusPill grant={linkedGrant} />
+                  </div>
+                  <div className="drafts-grant-facts">
+                    <div><span className="eyebrow">Deadline</span><strong>{linkedGrant.deadline_is_ongoing ? "Ongoing" : linkedGrant.application_deadline ?? "—"}</strong></div>
+                    <div><span className="eyebrow">Funding</span><strong>{linkedGrant.est_amounts ?? linkedGrant.est_avail_funds ?? "Not stated"}</strong></div>
+                    <div><span className="eyebrow">Eligibility</span><strong>{linkedGrant.applicant_types.length ? linkedGrant.applicant_types.join(", ") : "—"}</strong></div>
+                  </div>
+                  {(linkedGrant.source_excerpt ?? linkedGrant.description) && (
+                    <p className="muted drafts-grant-excerpt">{linkedGrant.source_excerpt ?? linkedGrant.description}</p>
+                  )}
                 </div>
               </div>
-              <p className="draft-grant-note">
-                {linkedGrant.source_excerpt ?? linkedGrant.source_page_description ?? linkedGrant.description ?? "No source evidence loaded."}
-              </p>
-              <button type="button" className="secondary" onClick={() => void onOpenGrant(linkedGrant.portal_id)}>
-                View grant
-              </button>
+            )}
+
+            {/* Draft editor */}
+            <div className="drafts-editor-wrap">
+              <DraftEditor
+                draft={selectedDraft}
+                grant={linkedGrant}
+                setDraft={setSelectedDraft}
+                onSaveDraft={onSaveDraft}
+                onAutosaveDraft={onAutosaveDraft}
+                onExportDraft={onExportDraft}
+                onDeleteDraft={onDeleteDraft}
+              />
             </div>
-          ) : (
-            <p className="muted">Open the source grant to keep the writing tied to the opportunity.</p>
-          )}
-        </aside>
+          </>
+        ) : (
+          <div className="drafts-empty-state">
+            <p className="eyebrow">Draft workspace</p>
+            <h3>Select a draft to begin</h3>
+            <p className="muted">Choose a draft from the list to open the editor. Create drafts from any grant in Discover or Watchlist.</p>
+            {config?.last_sync_at && (
+              <p className="muted">Catalog synced {formatTimestamp(config.last_sync_at) ?? "—"}</p>
+            )}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function RailCollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      style={{ width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round", transform: collapsed ? "rotate(180deg)" : "none", transition: "transform 200ms ease" }}
+    >
+      <path d="M10 3L6 8l4 5" />
+    </svg>
   );
 }

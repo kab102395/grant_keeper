@@ -177,7 +177,7 @@ export function DraftEditor({
           <dl className="kv-list compact">
             <div>
               <dt>Updated</dt>
-              <dd>{formatTimestamp(currentDraft.updated_at)}</dd>
+              <dd>{formatTimestamp(currentDraft.updated_at) ?? "—"}</dd>
             </div>
             <div>
               <dt>Preview length</dt>
