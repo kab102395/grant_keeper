@@ -1,17 +1,12 @@
 import type { WatchlistEntry, GrantRecord, LocalConfig } from "../lib/types";
 import {
-  deadlineUrgency,
   grantDeadlineLabel,
   grantFundingLabel,
   grantSourceLabel,
-  grantStatusLabel,
   formatTimestamp,
 } from "../lib/shell";
-
-function deadlineTone(grant: GrantRecord | undefined) {
-  if (!grant) return "distant";
-  return deadlineUrgency(grant);
-}
+import { EmptyValue, GrantStatusPill, MetaItem, StatusPill } from "../components/ui";
+import { BuildingIcon, CalendarIcon, CashIcon, MapPinIcon } from "../components/icons";
 
 export function WatchlistPage({
   watchlist,
@@ -40,7 +35,7 @@ export function WatchlistPage({
     <div className="surface-stack watchlist-shell">
       <div className="surface-copy watchlist-copy">
         <h3>Watchlist</h3>
-        <p>Saved grants for the current organization. Each row stays paired with the cached grant catalog, with live metadata only when available.</p>
+        <p>Saved grants for the current organization. Each card stays paired with the cached grant catalog, with live metadata only when available.</p>
       </div>
 
       <div className="info-row">
@@ -49,96 +44,80 @@ export function WatchlistPage({
         {aiSettingsRequired ? <span>AI mode is selected but not configured. Open org settings to enable it.</span> : null}
       </div>
 
-      <div className="watchlist-table-shell">
-        <table className="grant-table watchlist-table">
-          <thead>
-            <tr>
-              <th>Grant</th>
-              <th>Deadline</th>
-              <th>Amount</th>
-              <th>Status</th>
-              <th>Source</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {watchlist.length === 0 ? (
-              <tr>
-                <td colSpan={6}>
-                  <p className="muted grant-table-empty">Nothing has been saved yet.</p>
-                </td>
-              </tr>
-            ) : (
-              watchlist.map((entry) => {
-                const grant = grantsByPortalId.get(entry.portal_id);
-                const title = grant?.title ?? `Grant ${entry.portal_id}`;
-                const agency = grant?.agency_dept ?? "No live agency metadata";
-                const source = grant ? grantSourceLabel(grant) : "No source metadata";
-                const status = grant ? grantStatusLabel(grant) : "unknown";
-                const deadline = grant ? grantDeadlineLabel(grant) : "not set";
-                const funding = grant ? grantFundingLabel(grant) : "not set";
-                const urgency = deadlineTone(grant);
+      <section className="grant-card-grid">
+        {watchlist.length === 0 ? (
+          <p className="muted grant-card-empty">Nothing has been saved yet.</p>
+        ) : (
+          watchlist.map((entry) => {
+            const grant = grantsByPortalId.get(entry.portal_id);
+            const title = grant?.title ?? `Grant ${entry.portal_id}`;
+            const agency = grant?.agency_dept ?? (grant ? grantSourceLabel(grant) : null);
+            const funding = grant ? grantFundingLabel(grant) : "";
+            const geography = grant?.source_jurisdiction ?? grant?.geography ?? "";
 
-                return (
-                  <tr key={entry.portal_id} className="grant-row watchlist-row">
-                    <td className="grant-cell grant-cell-title">
-                      <button type="button" className="grant-title-button" onClick={() => void onViewGrant(entry.portal_id)}>
-                        {title}
-                      </button>
-                      <div className="grant-cell-meta">
-                        <span>{agency}</span>
-                        <span>Portal ID: {entry.portal_id}</span>
-                      </div>
-                      <span className="watchlist-note">{entry.note ?? "Saved from the live grant catalog"}</span>
-                    </td>
-                    <td className="grant-cell">
-                      <strong className={`deadline ${urgency}`}>{deadline}</strong>
-                      <span>{grant?.deadline_is_ongoing ? "Open-ended" : grant?.application_deadline ?? "No deadline set"}</span>
-                    </td>
-                    <td className="grant-cell">
-                      <strong>{funding}</strong>
-                      <span>{grant ? grant.est_awards ?? "Award count not set" : "No live amount metadata"}</span>
-                    </td>
-                    <td className="grant-cell">
-                      <span className="status-pill">{status}</span>
-                      <span>{grant ? (grant.deadline_is_ongoing ? "Ongoing" : grant.status ?? "Live metadata") : "No live metadata"}</span>
-                    </td>
-                    <td className="grant-cell">
-                      <strong>{source}</strong>
-                      <span>{grant?.source_jurisdiction ?? grant?.geography ?? "No jurisdiction metadata"}</span>
-                    </td>
-                    <td className="grant-cell grant-cell-actions watchlist-actions">
-                      <button type="button" className="secondary" onClick={() => void onViewGrant(entry.portal_id)}>
-                        View
-                      </button>
-                      <button
-                        type="button"
-                        className="primary"
-                        onClick={() => grant && void onCreateDraft(grant)}
-                        disabled={!grant || !canWriteOrg}
-                        title={!canWriteOrg ? writeDisabledReason : grant ? undefined : "Grant metadata not loaded yet"}
-                      >
-                        {aiSettingsRequired ? "Scaffold" : "Draft"}
-                      </button>
-                      {aiSettingsRequired ? (
-                        <button type="button" className="ghost" onClick={onOpenAiSettings}>
-                          AI settings
-                        </button>
-                      ) : null}
-                      <button type="button" className="secondary" onClick={() => void onRemove({ portal_id: entry.portal_id })}>
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+            return (
+              <article key={entry.portal_id} className="grant-card">
+                <div className="grant-card-head">
+                  <div className="grant-card-titles">
+                    <button type="button" className="grant-card-title" onClick={() => void onViewGrant(entry.portal_id)}>
+                      {title}
+                    </button>
+                    <p className="grant-card-agency">
+                      <BuildingIcon />
+                      {agency ?? <EmptyValue label="No live agency metadata" />}
+                    </p>
+                  </div>
+                  {grant ? <GrantStatusPill grant={grant} /> : <StatusPill tone="neutral">Saved</StatusPill>}
+                </div>
+
+                <div className="grant-card-meta">
+                  <MetaItem icon={<CalendarIcon />} muted={!grant}>
+                    {grant
+                      ? grant.deadline_is_ongoing
+                        ? "Ongoing deadline"
+                        : grantDeadlineLabel(grant)
+                      : <EmptyValue label="Deadline not loaded" />}
+                  </MetaItem>
+                  <MetaItem icon={<CashIcon />} muted={!funding}>
+                    {funding || <EmptyValue label="Funding not stated" />}
+                  </MetaItem>
+                  <MetaItem icon={<MapPinIcon />} muted={!geography}>
+                    {geography || <EmptyValue label="Geography not set" />}
+                  </MetaItem>
+                </div>
+
+                {entry.note ? <p className="watchlist-note muted">{entry.note}</p> : null}
+
+                <div className="grant-card-actions">
+                  <button type="button" className="secondary" onClick={() => void onViewGrant(entry.portal_id)}>
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => grant && void onCreateDraft(grant)}
+                    disabled={!grant || !canWriteOrg}
+                    title={!canWriteOrg ? writeDisabledReason : grant ? undefined : "Grant metadata not loaded yet"}
+                  >
+                    {aiSettingsRequired ? "Scaffold" : "Draft"}
+                  </button>
+                  {aiSettingsRequired ? (
+                    <button type="button" className="ghost" onClick={onOpenAiSettings}>
+                      AI settings
+                    </button>
+                  ) : null}
+                  <button type="button" className="secondary" onClick={() => void onRemove({ portal_id: entry.portal_id })}>
+                    Remove
+                  </button>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </section>
 
       <div className="surface-copy watchlist-footnote">
-        <p className="muted">Rows without live grant metadata still reflect the saved entry and can be removed from the watchlist.</p>
+        <p className="muted">Cards without live grant metadata still reflect the saved entry and can be removed from the watchlist.</p>
       </div>
     </div>
   );

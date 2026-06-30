@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { createWorkspaceLocation, type Surface, type WorkspaceLocation } from "../hooks/useNavigation";
+import { GrantKeeperLogo } from "./GrantKeeperLogo";
 
 type SidebarSummary = {
   grants: number;
@@ -55,7 +56,9 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <span className="brand-mark">GK</span>
+        <span className="brand-mark">
+          <GrantKeeperLogo size={28} tone="onDark" />
+        </span>
         <span className="brand-name">Grant Keeper</span>
       </div>
 

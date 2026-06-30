@@ -8,6 +8,8 @@ import { DevToolsPage } from "./pages/DevToolsPage";
 import { FirstRunPrompt } from "./components/FirstRunPrompt";
 import { OrganizationPage } from "./pages/OrganizationPage";
 import { Sidebar } from "./components/Sidebar";
+import { EmberLogo } from "./components/EmberLogo";
+import { AccountMenu } from "./components/AccountMenu";
 import { SetupPage } from "./pages/SetupPage";
 import { WatchlistPage } from "./pages/WatchlistPage";
 import { surfaceTitle } from "./lib/shell";
@@ -207,6 +209,14 @@ export default function App() {
             </button>
             <span className="status-pill">{setupComplete ? "Setup complete" : "Setup required"}</span>
             <span className="status-pill">{startupStateLabel(startupState)}</span>
+            {data.snapshot?.session.signed_in ? (
+              <AccountMenu
+                email={data.snapshot?.session.email ?? null}
+                companyName={data.organization?.name ?? null}
+                onChangePassword={() => navState.navigate(createWorkspaceLocation("organization"))}
+                onSignOut={() => void data.clearSessionAndReload()}
+              />
+            ) : null}
           </>
         </PageHeader>
 
@@ -390,6 +400,11 @@ export default function App() {
             />
           ) : null}
         </div>
+
+        <footer className="app-footer">
+          <EmberLogo size={16} tone="onLight" />
+          <span>© {new Date().getFullYear()} Ember Tech Solutions LLC. All rights reserved.</span>
+        </footer>
       </section>
     </>
   );

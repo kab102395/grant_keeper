@@ -21,13 +21,8 @@ import {
   type DiscoverySortFilter,
   type DiscoveryStatusFilter,
 } from "../lib/shell";
-
-function summarizeCategories(categories: string[]) {
-  if (categories.length === 0) return "None";
-  if (categories.length === 1) return categories[0];
-  if (categories.length === 2) return categories.join(", ");
-  return `${categories.slice(0, 2).join(", ")} +${categories.length - 2}`;
-}
+import { EmptyValue, GrantStatusPill, MetaItem, SparseTag } from "../components/ui";
+import { BuildingIcon, CalendarIcon, CashIcon, MapPinIcon, StarIcon } from "../components/icons";
 
 export function GrantDiscoveryPage({
   grants,
@@ -352,97 +347,78 @@ export function GrantDiscoveryPage({
         </p>
       </div>
 
-      <section className="grant-table-shell">
-        <div className="grant-table-wrap">
-          <table className="grant-table">
-            <thead>
-              <tr>
-                <th>Grant</th>
-                <th>Agency</th>
-                <th>Deadline</th>
-                <th>Funding</th>
-                <th>Status</th>
-                <th>Categories</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7}>
-                    <p className="muted grant-table-empty">No grants match the current search.</p>
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((grant) => {
-                  const isSelected = selectedGrant?.portal_id === grant.portal_id;
-                  const isWatchlisted = watchlistedPortalIds.has(grant.portal_id);
-                  return (
-                    <tr key={grant.portal_id} className={isSelected ? "grant-row selected" : "grant-row"}>
-                      <td className="grant-cell grant-cell-title">
-                        <button type="button" className="grant-title-button" onClick={() => void onSelectGrant(grant)}>
-                          {grant.title}
-                        </button>
-                        <div className="grant-cell-meta">
-                          <span>{grant.portal_id}</span>
-                          <span>{grantSourceLabel(grant)}</span>
-                        </div>
-                      </td>
-                      <td className="grant-cell">
-                        <strong>{grant.agency_dept ?? "Unknown agency"}</strong>
-                        <span>{grantJurisdictionLabel(grant)}</span>
-                      </td>
-                      <td className="grant-cell">
-                        <strong>{grantDeadlineLabel(grant)}</strong>
-                        <span>{grant.deadline_is_ongoing ? "Open-ended" : grant.application_deadline ?? "No deadline set"}</span>
-                      </td>
-                      <td className="grant-cell">
-                        <strong>{grantFundingLabel(grant)}</strong>
-                        <span>{grant.est_awards ?? "Award count not set"}</span>
-                      </td>
-                      <td className="grant-cell">
-                        <span className="status-pill">{grantStatusLabel(grant)}</span>
-                        <span>{grant.loi_required ? "LOI required" : "No LOI flag"}</span>
-                      </td>
-                      <td className="grant-cell">
-                        <strong>{summarizeCategories(grant.categories)}</strong>
-                        <span>{grant.categories.length === 0 ? "No categories tagged" : `${grant.categories.length} tagged categories`}</span>
-                      </td>
-                      <td className="grant-cell grant-cell-actions">
-                        <button type="button" className="secondary" onClick={() => void onSelectGrant(grant)}>
-                          Open
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => void onToggleWatchlist(grant)}
-                          disabled={!canWriteOrg}
-                          title={!canWriteOrg ? writeDisabledReason : undefined}
-                        >
-                          {isWatchlisted ? "Saved" : "Save"}
-                        </button>
-                        <button
-                          type="button"
-                          className="primary"
-                          onClick={() => void onCreateDraft(grant)}
-                          disabled={!canWriteOrg}
-                          title={!canWriteOrg ? writeDisabledReason : undefined}
-                        >
-                          {aiSettingsRequired ? "Scaffold" : "Draft"}
-                        </button>
-                        {aiSettingsRequired ? (
-                          <button type="button" className="ghost" onClick={onOpenAiSettings}>
-                            AI settings
-                          </button>
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+      <section className="grant-card-grid">
+        {filtered.length === 0 ? (
+          <p className="muted grant-card-empty">No grants match the current search.</p>
+        ) : (
+          filtered.map((grant) => {
+            const isSelected = selectedGrant?.portal_id === grant.portal_id;
+            const isWatchlisted = watchlistedPortalIds.has(grant.portal_id);
+            const deadline = grantDeadlineLabel(grant);
+            const funding = grantFundingLabel(grant);
+            const geography = grantJurisdictionLabel(grant);
+            const isSparse = !funding && grant.categories.length === 0 && !grant.agency_dept;
+            return (
+              <article key={grant.portal_id} className={isSelected ? "grant-card selected" : "grant-card"}>
+                <div className="grant-card-head">
+                  <div className="grant-card-titles">
+                    <button type="button" className="grant-card-title" onClick={() => void onSelectGrant(grant)}>
+                      {grant.title}
+                    </button>
+                    <p className="grant-card-agency">
+                      <BuildingIcon />
+                      {grant.agency_dept ?? grantSourceLabel(grant)}
+                    </p>
+                  </div>
+                  <GrantStatusPill grant={grant} />
+                </div>
+
+                <div className="grant-card-meta">
+                  <MetaItem icon={<CalendarIcon />}>
+                    {grant.deadline_is_ongoing ? "Ongoing deadline" : deadline || <EmptyValue label="No deadline" />}
+                  </MetaItem>
+                  <MetaItem icon={<CashIcon />} muted={!funding}>
+                    {funding || <EmptyValue label="Funding not stated" />}
+                  </MetaItem>
+                  <MetaItem icon={<MapPinIcon />} muted={!geography}>
+                    {geography || <EmptyValue label="Geography not set" />}
+                  </MetaItem>
+                  {isSparse ? <SparseTag /> : null}
+                </div>
+
+                <div className="grant-card-actions">
+                  <button type="button" className="secondary" onClick={() => void onSelectGrant(grant)}>
+                    View
+                  </button>
+                  <button
+                    type="button"
+                    className={isWatchlisted ? "secondary grant-card-saved" : "secondary"}
+                    onClick={() => void onToggleWatchlist(grant)}
+                    disabled={!canWriteOrg}
+                    title={!canWriteOrg ? writeDisabledReason : undefined}
+                  >
+                    <StarIcon filled={isWatchlisted} />
+                    {isWatchlisted ? "Saved" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={() => void onCreateDraft(grant)}
+                    disabled={!canWriteOrg}
+                    title={!canWriteOrg ? writeDisabledReason : undefined}
+                  >
+                    {aiSettingsRequired ? "Scaffold" : "Draft"}
+                  </button>
+                  {aiSettingsRequired ? (
+                    <button type="button" className="ghost" onClick={onOpenAiSettings}>
+                      AI settings
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })
+        )}
       </section>
     </div>
   );

@@ -294,6 +294,13 @@ export function deadlineUrgency(grant: GrantRecord): "urgent" | "soon" | "distan
   return "distant";
 }
 
+export function deadlineDaysLeft(grant: GrantRecord): number | null {
+  if (grant.deadline_is_ongoing || !grant.application_deadline) return null;
+  const deadline = new Date(grant.application_deadline);
+  if (Number.isNaN(deadline.getTime())) return null;
+  return Math.ceil((deadline.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+}
+
 export const ORG_SCORED_FIELDS: Array<keyof OrganizationRecord> = [
   "name",
   "mission",

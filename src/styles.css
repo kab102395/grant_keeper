@@ -1,70 +1,78 @@
 :root {
   color-scheme: light dark;
-  --page-bg: #eef2f7;
-  --page-bg-alt: #e2e8f0;
-  --sidebar-bg: #1a2236;
-  --sidebar-item-hover: rgba(255, 255, 255, 0.06);
-  --sidebar-item-active: rgba(143, 183, 232, 0.16);
-  --sidebar-text-muted: #95a2b8;
+  --page-bg: #eef1f6;
+  --page-bg-alt: #e3e7ef;
+  --navy: #202448;
+  --navy-strong: #161a36;
+  --navy-soft: rgba(32, 36, 72, 0.1);
+  --sidebar-bg: #202448;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.08);
+  --sidebar-item-active: rgba(237, 111, 28, 0.24);
+  --sidebar-text-muted: #c3cadf;
   --card-bg: #ffffff;
-  --card-bg-soft: #f6f8fc;
+  --card-bg-soft: #f6f7fb;
   --panel: var(--card-bg);
   --panel-strong: var(--card-bg);
   --panel-soft: var(--card-bg-soft);
-  --text: #142033;
-  --muted: #5c6c83;
-  --border: rgba(20, 32, 51, 0.12);
+  --text: #1d2238;
+  --muted: #5c6480;
+  --label: #454c70;
+  --border: rgba(32, 36, 72, 0.12);
   --line: var(--border);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
-  --accent: #365d8a;
-  --accent-strong: #1f4c7a;
-  --accent-soft: rgba(54, 93, 138, 0.12);
+  --shadow: 0 1px 3px rgba(32, 36, 72, 0.12);
+  --accent: #ed6f1c;
+  --accent-strong: #cf5e12;
+  --accent-soft: rgba(237, 111, 28, 0.13);
   --good: #2d6a4f;
-  --warn: #9a5b00;
-  --danger: #8f3a3a;
-  --field-bg: rgba(255, 255, 255, 0.82);
-  --field-border: rgba(20, 32, 51, 0.1);
-  --button-secondary-bg: rgba(255, 255, 255, 0.76);
-  --button-secondary-border: rgba(20, 32, 51, 0.1);
-  --chip-bg: rgba(54, 93, 138, 0.1);
-  --chip-bg-active: rgba(54, 93, 138, 0.18);
+  --warn: #a9750a;
+  --danger: #c0392b;
+  --field-bg: rgba(255, 255, 255, 0.85);
+  --field-border: rgba(32, 36, 72, 0.12);
+  --button-secondary-bg: rgba(255, 255, 255, 0.78);
+  --button-secondary-border: rgba(32, 36, 72, 0.12);
+  --chip-bg: rgba(237, 111, 28, 0.1);
+  --chip-bg-active: rgba(237, 111, 28, 0.2);
   --chip-text: var(--accent-strong);
   --radius: 8px;
   --radius-md: 8px;
   --radius-sm: 4px;
-  --body-font: "Segoe UI", "Trebuchet MS", sans-serif;
+  --body-font: "Montserrat", "Segoe UI", "Trebuchet MS", sans-serif;
 }
 
 :root[data-theme="dark"] {
-  --page-bg: #0c1220;
-  --page-bg-alt: #10192c;
-  --sidebar-bg: #0f1623;
-  --sidebar-item-hover: rgba(255, 255, 255, 0.05);
-  --sidebar-item-active: rgba(143, 183, 232, 0.14);
-  --sidebar-text-muted: #8c99af;
-  --card-bg: #121a2b;
-  --card-bg-soft: #0f1728;
+  --page-bg: #0b0f1d;
+  --page-bg-alt: #10162a;
+  --navy: #aab2d6;
+  --navy-strong: #c6cdec;
+  --navy-soft: rgba(170, 178, 214, 0.14);
+  --sidebar-bg: #14182e;
+  --sidebar-item-hover: rgba(255, 255, 255, 0.07);
+  --sidebar-item-active: rgba(241, 132, 58, 0.24);
+  --sidebar-text-muted: #b7bfd8;
+  --card-bg: #141a2c;
+  --card-bg-soft: #10172a;
   --panel: var(--card-bg);
   --panel-strong: var(--card-bg);
   --panel-soft: var(--card-bg-soft);
-  --text: #edf2fb;
-  --muted: #a8b3c7;
-  --border: rgba(173, 186, 214, 0.14);
+  --text: #edf0f9;
+  --muted: #a6afc6;
+  --label: #aeb6d4;
+  --border: rgba(174, 182, 212, 0.16);
   --line: var(--border);
-  --shadow: 0 1px 3px rgba(0, 0, 0, 0.24);
-  --accent: #8fb7e8;
-  --accent-strong: #b9d3fb;
-  --accent-soft: rgba(143, 183, 232, 0.16);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.28);
+  --accent: #f1843a;
+  --accent-strong: #f7a062;
+  --accent-soft: rgba(241, 132, 58, 0.18);
   --good: #76c69d;
-  --warn: #f1bb69;
+  --warn: #e6b04a;
   --danger: #f08f8f;
-  --field-bg: rgba(9, 15, 28, 0.92);
-  --field-border: rgba(173, 186, 214, 0.16);
-  --button-secondary-bg: rgba(21, 31, 52, 0.86);
-  --button-secondary-border: rgba(173, 186, 214, 0.14);
-  --chip-bg: rgba(143, 183, 232, 0.14);
-  --chip-bg-active: rgba(143, 183, 232, 0.24);
-  --chip-text: #d8e8ff;
+  --field-bg: rgba(9, 14, 28, 0.92);
+  --field-border: rgba(174, 182, 212, 0.16);
+  --button-secondary-bg: rgba(21, 28, 48, 0.86);
+  --button-secondary-border: rgba(174, 182, 212, 0.16);
+  --chip-bg: rgba(241, 132, 58, 0.16);
+  --chip-bg-active: rgba(241, 132, 58, 0.26);
+  --chip-text: #f4a368;
 }
 
 * {
@@ -197,13 +205,9 @@ textarea:focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  font-size: 0.74rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
 }
 
 .brand-name {
@@ -225,7 +229,7 @@ textarea:focus {
   letter-spacing: 0.18em;
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--label);
 }
 
 .lede,
@@ -319,7 +323,8 @@ textarea:focus {
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--card-bg) 88%, transparent);
   flex-shrink: 0;
-  overflow: hidden;
+  position: relative;
+  z-index: 30;
 }
 
 .page-header-copy {
@@ -430,7 +435,7 @@ textarea:focus {
   font-size: 0.82rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  color: var(--label);
   font-weight: 800;
 }
 
@@ -673,7 +678,7 @@ textarea:focus {
   font-size: 0.74rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--label);
   font-weight: 800;
 }
 
@@ -1051,7 +1056,7 @@ textarea:focus {
   font-size: 0.74rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  color: var(--label);
   background: color-mix(in srgb, var(--page-bg) 92%, var(--panel-soft));
   border-bottom: 1px solid var(--line);
 }
@@ -1521,7 +1526,7 @@ textarea:focus {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  color: var(--label);
   font-weight: 800;
 }
 
@@ -1701,8 +1706,12 @@ textarea:focus {
 }
 
 .primary {
-  color: white;
-  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
+  color: #202448;
+  background: var(--accent);
+}
+
+.primary:hover {
+  background: var(--accent-strong);
 }
 
 .secondary {
@@ -1823,7 +1832,7 @@ textarea:focus {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: var(--accent);
+  color: var(--label);
   font-weight: 800;
 }
 
@@ -1981,4 +1990,286 @@ textarea:focus {
   .grant-context-banner {
     position: static;
   }
+}
+
+/* ── Brand primitives (status pill, empty value, meta strip) ──────────── */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.22rem 0.62rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  width: fit-content;
+  justify-self: start;
+}
+.status-chip-open {
+  background: color-mix(in srgb, var(--good) 14%, transparent);
+  color: var(--good);
+}
+.status-chip-soon {
+  background: color-mix(in srgb, var(--warn) 18%, transparent);
+  color: var(--warn);
+}
+.status-chip-urgent {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+.status-chip-closed {
+  background: color-mix(in srgb, var(--muted) 16%, transparent);
+  color: var(--muted);
+}
+.status-chip-neutral {
+  background: var(--chip-bg);
+  color: var(--chip-text);
+}
+
+.empty-value {
+  color: var(--muted);
+}
+
+.sparse-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.14rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  color: var(--muted);
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+.meta-item svg {
+  flex: 0 0 auto;
+}
+.meta-item-muted {
+  opacity: 0.85;
+}
+
+/* ── Grant card grid (Discovery + Watchlist) ─────────────────────────── */
+.grant-card-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.grant-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card-bg);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.grant-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  box-shadow: var(--shadow);
+}
+.grant-card.selected {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.grant-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+.grant-card-titles {
+  min-width: 0;
+}
+.grant-card-title {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  cursor: pointer;
+}
+.grant-card-title:hover,
+.grant-card-title:focus-visible {
+  color: var(--accent-strong);
+  outline: none;
+}
+.grant-card-agency {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.grant-card-agency svg {
+  flex: 0 0 auto;
+}
+.grant-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.3rem;
+}
+.grant-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--border);
+}
+.grant-card-actions button {
+  height: 34px;
+  padding: 0 0.95rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.grant-card-saved {
+  color: var(--accent-strong);
+}
+.grant-card-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+
+/* ── Account menu (top-right) ─────────────────────────────────────────── */
+.account-menu {
+  position: relative;
+  display: inline-flex;
+}
+.account-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #202448;
+  font-weight: 700;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent-strong) 55%, transparent);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.account-avatar:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.account-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 236px;
+  z-index: 40;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(20, 24, 48, 0.18);
+  padding: 0.4rem;
+  display: grid;
+  gap: 0.05rem;
+}
+.account-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0.3rem;
+}
+.account-popover-photo,
+.account-popover-initials {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.account-popover-photo {
+  object-fit: cover;
+}
+.account-popover-initials {
+  background: var(--accent);
+  color: #202448;
+  font-weight: 700;
+  font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.account-popover-id {
+  display: grid;
+  min-width: 0;
+}
+.account-popover-id strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-popover-id span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.account-menu-item {
+  text-align: left;
+  padding: 0.55rem 0.6rem;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 500;
+}
+.account-menu-item:hover {
+  background: var(--panel-soft);
+}
+.account-menu-item-danger {
+  color: var(--danger);
+}
+.account-menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.3rem 0;
+}
+
+/* ── App footer (Ember Tech copyright) ───────────────────────────────── */
+.app-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.9rem 24px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.app-footer svg {
+  flex: 0 0 auto;
 }
