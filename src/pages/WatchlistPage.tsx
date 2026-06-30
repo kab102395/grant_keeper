@@ -3,6 +3,7 @@ import {
   grantDeadlineLabel,
   grantFundingLabel,
   grantSourceLabel,
+  grantStatusLabel,
   formatTimestamp,
 } from "../lib/shell";
 import { EmptyValue, GrantStatusPill, MetaItem, StatusPill } from "../components/ui";
@@ -48,7 +49,13 @@ export function WatchlistPage({
         {watchlist.length === 0 ? (
           <p className="muted grant-card-empty">Nothing has been saved yet.</p>
         ) : (
-          watchlist.map((entry) => {
+          [...watchlist].sort((a, b) => {
+            const ga = grantsByPortalId.get(a.portal_id);
+            const gb = grantsByPortalId.get(b.portal_id);
+            const rankA = ga ? (grantStatusLabel(ga) === "open" ? 0 : 1) : 2;
+            const rankB = gb ? (grantStatusLabel(gb) === "open" ? 0 : 1) : 2;
+            return rankA - rankB;
+          }).map((entry) => {
             const grant = grantsByPortalId.get(entry.portal_id);
             const title = grant?.title ?? `Grant ${entry.portal_id}`;
             const agency = grant?.agency_dept ?? (grant ? grantSourceLabel(grant) : null);
@@ -86,7 +93,7 @@ export function WatchlistPage({
                   </MetaItem>
                 </div>
 
-                {entry.note ? <p className="watchlist-note muted">{entry.note}</p> : null}
+                {entry.note && !entry.note.includes("|") ? <p className="watchlist-note muted">{entry.note}</p> : null}
 
                 <div className="grant-card-actions">
                   <button type="button" className="secondary" onClick={() => void onViewGrant(entry.portal_id)}>

@@ -30,6 +30,7 @@ export function DashboardPage({
   syncReport,
   onRefreshDatabase,
   onRefreshLiveFeeds,
+  isDevSession,
   grantCount,
   watchlistCount,
   draftCount,
@@ -45,6 +46,7 @@ export function DashboardPage({
   syncReport: GrantIngestReport | null;
   onRefreshDatabase: () => Promise<void>;
   onRefreshLiveFeeds: () => Promise<void>;
+  isDevSession: boolean;
   grantCount: number;
   watchlistCount: number;
   draftCount: number;
@@ -82,9 +84,11 @@ export function DashboardPage({
           <button type="button" className="secondary" onClick={() => void onRefreshDatabase()}>
             Refresh database
           </button>
-          <button type="button" className="secondary" onClick={() => void onRefreshLiveFeeds()}>
-            Sync live sources
-          </button>
+          {isDevSession ? (
+            <button type="button" className="secondary" onClick={() => void onRefreshLiveFeeds()}>
+              Sync live sources
+            </button>
+          ) : null}
           <button type="button" className="secondary" onClick={() => onOpenSurface("discover")}>
             Open discovery
           </button>
@@ -97,9 +101,11 @@ export function DashboardPage({
           <button type="button" className="secondary" onClick={() => onOpenSurface("organization")}>
             Open org profile
           </button>
-          <button type="button" className="secondary" onClick={() => onOpenSurface("dev")}>
-            Open dev tools
-          </button>
+          {isDevSession ? (
+            <button type="button" className="secondary" onClick={() => onOpenSurface("dev")}>
+              Open dev tools
+            </button>
+          ) : null}
         </div>
 
         <div className="panel-block panel-block-soft">
@@ -148,7 +154,7 @@ export function DashboardPage({
             <h3>Last active items</h3>
             <p className="muted">Use these as shortcuts back into the currently selected grant or draft.</p>
           </div>
-          <span className="status-pill">{syncReport ? `Last sync ${formatTimestamp(config?.last_sync_at)}` : "Live catalog ready"}</span>
+          <span className="status-pill">{syncReport ? `Last sync ${formatTimestamp(config?.last_sync_at) ?? "—"}` : "Live catalog ready"}</span>
         </div>
 
         <div className="info-row">

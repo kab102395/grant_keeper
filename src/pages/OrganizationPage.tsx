@@ -8,6 +8,7 @@ import {
   orgCompletenessScore,
   orgMissingFields,
 } from "../lib/shell";
+import { FieldTip } from "../components/FieldTip";
 
 const ORG_FIELD_LABELS: Record<keyof OrganizationRecord, string> = {
   uid: "Workspace UID",
@@ -36,28 +37,28 @@ const ORG_FIELD_LABELS: Record<keyof OrganizationRecord, string> = {
 };
 
 const ORG_FIELDS: Array<
-  | { key: "name" | "ein" | "ntee_code" | "irc_status" | "city" | "state" | "zip" | "website" | "phone" | "contact_name" | "contact_email" | "service_area" | "target_population"; kind: "text"; placeholder?: string }
-  | { key: "mission" | "address" | "description"; kind: "textarea"; placeholder?: string }
-  | { key: "founded_year" | "annual_budget" | "staff_count" | "volunteer_count"; kind: "number"; placeholder?: string }
+  | { key: "name" | "ein" | "ntee_code" | "irc_status" | "city" | "state" | "zip" | "website" | "phone" | "contact_name" | "contact_email" | "service_area" | "target_population"; kind: "text"; placeholder?: string; tip?: string }
+  | { key: "mission" | "address" | "description"; kind: "textarea"; placeholder?: string; tip?: string }
+  | { key: "founded_year" | "annual_budget" | "staff_count" | "volunteer_count"; kind: "number"; placeholder?: string; tip?: string }
 > = [
   { key: "name", kind: "text", placeholder: "Organization legal or public name" },
-  { key: "ein", kind: "text", placeholder: "12-3456789" },
-  { key: "ntee_code", kind: "text", placeholder: "Example: P20" },
-  { key: "irc_status", kind: "text", placeholder: "501(c)(3)" },
-  { key: "mission", kind: "textarea", placeholder: "What does the organization exist to do?" },
-  { key: "description", kind: "textarea", placeholder: "Short profile for grant drafting context" },
+  { key: "ein", kind: "text", placeholder: "12-3456789", tip: "Employer Identification Number — the 9-digit federal tax ID the IRS assigned to your nonprofit (format: 12-3456789). Required on most federal grant applications." },
+  { key: "ntee_code", kind: "text", placeholder: "Example: P20", tip: "National Taxonomy of Exempt Entities — a letter-and-number code classifying your nonprofit's primary activity (e.g. P20 for Community Action Agencies). Used on some grant applications and in eligibility filters." },
+  { key: "irc_status", kind: "text", placeholder: "501(c)(3)", tip: "Your Internal Revenue Code tax-exempt classification. Most public charities are 501(c)(3). Some grants restrict eligibility by IRC status." },
+  { key: "mission", kind: "textarea", placeholder: "What does the organization exist to do?", tip: "A concise statement of your organization's core purpose. This goes directly into AI-generated grant narratives, so write it the way you want it to appear in applications." },
+  { key: "description", kind: "textarea", placeholder: "Short profile for grant drafting context", tip: "A longer org profile used as background context when generating drafts. It supplements the mission — include history, approach, and key programs." },
   { key: "address", kind: "textarea", placeholder: "Street address or mailing address" },
   { key: "city", kind: "text", placeholder: "City" },
   { key: "state", kind: "text", placeholder: "State" },
   { key: "zip", kind: "text", placeholder: "ZIP" },
   { key: "website", kind: "text", placeholder: "https://example.org" },
   { key: "phone", kind: "text", placeholder: "(555) 555-5555" },
-  { key: "contact_name", kind: "text", placeholder: "Primary grant contact" },
+  { key: "contact_name", kind: "text", placeholder: "Primary grant contact", tip: "The person responsible for grant applications at your organization. Their name may appear on grant submission forms." },
   { key: "contact_email", kind: "text", placeholder: "grants@example.org" },
-  { key: "service_area", kind: "text", placeholder: "Counties, cities, or region served" },
-  { key: "target_population", kind: "text", placeholder: "Who the organization serves" },
+  { key: "service_area", kind: "text", placeholder: "Counties, cities, or region served", tip: "The geographic area your organization operates in. Grant funders often require applicants to serve a specific region — this field is used to match eligibility." },
+  { key: "target_population", kind: "text", placeholder: "Who the organization serves", tip: "The communities or demographics your programs serve (e.g. low-income families, youth ages 12–18, rural seniors). Included in draft narratives automatically." },
   { key: "founded_year", kind: "number", placeholder: "1988" },
-  { key: "annual_budget", kind: "number", placeholder: "250000" },
+  { key: "annual_budget", kind: "number", placeholder: "250000", tip: "Total annual operating budget in USD. Used by the AI to calibrate funding request amounts in drafts — a $200K org requesting $2M looks unrealistic." },
   { key: "staff_count", kind: "number", placeholder: "12" },
   { key: "volunteer_count", kind: "number", placeholder: "48" },
 ];
@@ -183,68 +184,41 @@ export function OrganizationPage({
       </div>
 
       <div className="org-layout">
-        <aside className="panel-block panel-block-soft org-completeness-card">
-          <div className="detail-header">
-            <div>
-              <p className="eyebrow">Profile completeness</p>
-              <h4>{completeness}% complete</h4>
+        {/* Compact horizontal status bar */}
+        <div className="panel-block panel-block-soft org-completeness-card">
+          <div>
+            <p className="eyebrow">Profile completeness</p>
+            <strong>{completeness}% · {filledFields}/12 fields</strong>
+          </div>
+          <div className="org-completeness-bar-wrap">
+            <div className="completeness-bar" aria-hidden="true">
+              <div className="completeness-fill" style={{ width: `${completeness}%` }} />
             </div>
-            <span className="status-pill">{filledFields}/12 filled</span>
-          </div>
-
-          <p className="muted">Fill the missing fields to improve draft quality and make the nonprofit profile reusable.</p>
-
-          <div className="completeness-bar" aria-hidden="true">
-            <div className="completeness-fill" style={{ width: `${completeness}%` }} />
-          </div>
-
-          <div className="org-uid-card">
-            <span className="eyebrow">Workspace UID</span>
-            <p className="field-value">{orgUid ?? "—"}</p>
-          </div>
-
-          <div className="org-missing-section">
-            <div className="detail-header">
-              <div>
-                <p className="eyebrow">Missing</p>
-                <h4>Fields to finish</h4>
-              </div>
-            </div>
-            {missingLabels.length === 0 ? (
-              <p className="muted">No missing scored fields.</p>
-            ) : (
-              <ul className="org-missing-list">
-                {missingLabels.map((label) => (
-                  <li key={label}>{label}</li>
-                ))}
-              </ul>
+            {missingLabels.length > 0 && (
+              <p className="muted org-missing-inline">Missing: {missingLabels.join(", ")}</p>
             )}
           </div>
-
-          <div className="org-summary-card">
-            <p className="eyebrow">Autosave</p>
-            <p className="field-value">{autosaveStatus === "saved" && autosaveAt ? `Saved ${formatTimestamp(autosaveAt)}` : autosaveStatus}</p>
-            <p className="muted">Profile changes persist automatically while you type.</p>
+          <div className="org-status-pills">
+            <span className="org-status-chip">
+              <span className="eyebrow">Autosave</span>
+              <span>{autosaveStatus === "saved" && autosaveAt ? `Saved ${formatTimestamp(autosaveAt) ?? ""}` : autosaveStatus}</span>
+            </span>
+            <span className="org-status-chip">
+              <span className="eyebrow">AI drafting</span>
+              <span>{config?.anthropic_api_key ? "Key configured" : "No key yet"}</span>
+            </span>
           </div>
-
-          <div className="org-summary-card">
-            <p className="eyebrow">AI drafting</p>
-            <p className="field-value">
-              {config?.draft_generation_preference === "ai" && config?.anthropic_api_key ? "AI mode configured" : "Scaffold first"}
-            </p>
-            <p className="muted">
-              {config?.anthropic_api_key
-                ? "Anthropic key stored for this desktop workspace."
-                : "No Anthropic key saved yet."}
-            </p>
+          <div>
+            <p className="eyebrow">Workspace</p>
+            <code className="org-uid-inline">{orgUid ?? "—"}</code>
           </div>
-        </aside>
+        </div>
 
         <section className="panel-block org-form-panel">
           <div className="detail-header">
             <div>
-              <p className="eyebrow">Org form fields</p>
-              <h4>Organization details</h4>
+              <p className="eyebrow">Organization details</p>
+              <h4>{organization ? "Edit profile" : "Create profile"}</h4>
             </div>
             <span className="status-pill">{organization ? "Loaded" : "Empty"}</span>
           </div>
@@ -253,10 +227,17 @@ export function OrganizationPage({
             {ORG_FIELDS.map((field) => {
               const value = profile?.[field.key];
 
+              const labelNode = (
+                <span className="label-with-tip">
+                  {ORG_FIELD_LABELS[field.key]}
+                  {field.tip && <FieldTip tip={field.tip} />}
+                </span>
+              );
+
               if (field.kind === "textarea") {
                 return (
                   <label key={field.key} className="grid-span-2">
-                    {ORG_FIELD_LABELS[field.key]}
+                    {labelNode}
                     <textarea
                       value={typeof value === "string" ? value : ""}
                       onChange={(event) => updateTextField(field.key, event.target.value)}
@@ -270,7 +251,7 @@ export function OrganizationPage({
               if (field.kind === "number") {
                 return (
                   <label key={field.key}>
-                    {ORG_FIELD_LABELS[field.key]}
+                    {labelNode}
                     <input
                       type="number"
                       value={typeof value === "number" ? value : ""}
@@ -283,7 +264,7 @@ export function OrganizationPage({
 
               return (
                 <label key={field.key}>
-                  {ORG_FIELD_LABELS[field.key]}
+                  {labelNode}
                   <input
                     value={typeof value === "string" ? value : ""}
                     onChange={(event) => updateTextField(field.key, event.target.value)}
@@ -294,7 +275,10 @@ export function OrganizationPage({
             })}
 
             <label className="grid-span-2">
-              Programs
+              <span className="label-with-tip">
+                Programs
+                <FieldTip tip="List your organization's programs, one per line, in the format: Program name | short description | annual budget. Grant Keeper uses this to match programs to grant eligibility criteria and pre-fill application narratives." />
+              </span>
               <textarea
                 value={programsText}
                 onChange={(event) => setProgramsText(event.target.value)}

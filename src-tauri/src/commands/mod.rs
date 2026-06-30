@@ -18,6 +18,15 @@ use std::process::Command as StdCommand;
 use tauri::State;
 use tokio::process::Command;
 
+fn focus_main_window(app: &tauri::AppHandle) {
+    use tauri::Manager;
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 #[tauri::command]
 pub async fn get_app_snapshot(state: State<'_, AppState>) -> Result<AppSnapshot, String> {
     Ok(state.snapshot().await)
@@ -76,13 +85,18 @@ pub async fn create_workspace_account(
 
 #[tauri::command]
 pub async fn create_workspace_account_with_google(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: GoogleWorkspaceCreateRequest,
 ) -> Result<FirebaseSession, String> {
-    state
+    let result = state
         .create_workspace_account_with_google(request)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        focus_main_window(&app);
+    }
+    result
 }
 
 #[tauri::command]
@@ -98,13 +112,18 @@ pub async fn sign_in_to_workspace(
 
 #[tauri::command]
 pub async fn sign_in_to_workspace_with_google(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: GoogleWorkspaceSignInRequest,
 ) -> Result<FirebaseSession, String> {
-    state
+    let result = state
         .sign_in_to_workspace_with_google(request)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        focus_main_window(&app);
+    }
+    result
 }
 
 #[tauri::command]
@@ -131,13 +150,18 @@ pub async fn sign_up_to_join_workspace(
 
 #[tauri::command]
 pub async fn join_workspace_with_google(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: GoogleWorkspaceJoinRequest,
 ) -> Result<FirebaseSession, String> {
-    state
+    let result = state
         .join_workspace_with_google(request)
         .await
-        .map_err(error_string)
+        .map_err(error_string);
+    if result.is_ok() {
+        focus_main_window(&app);
+    }
+    result
 }
 
 #[tauri::command]

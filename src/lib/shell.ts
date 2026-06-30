@@ -230,14 +230,14 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   return false;
 }
 
-export function formatTimestamp(value: string | null | undefined) {
-  if (!value) return "not set";
+export function formatTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-export function formatCurrency(value: number | null | undefined) {
-  if (value == null || Number.isNaN(value)) return "not set";
+export function formatCurrency(value: number | null | undefined): string | null {
+  if (value == null || Number.isNaN(value)) return null;
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(
     value,
   );
@@ -263,12 +263,12 @@ export function grantStatusLabel(grant: GrantRecord) {
   return raw || "unknown";
 }
 
-export function grantDeadlineLabel(grant: GrantRecord) {
+export function grantDeadlineLabel(grant: GrantRecord): string | null {
   if (grant.deadline_is_ongoing) return "Ongoing";
-  return grant.application_deadline ?? "not set";
+  return grant.application_deadline ?? null;
 }
 
-export function grantFundingLabel(grant: GrantRecord) {
+export function grantFundingLabel(grant: GrantRecord): string | null {
   return grant.est_amounts ?? grant.est_avail_funds ?? formatCurrency(grant.est_avail_funds_numeric);
 }
 
@@ -371,6 +371,10 @@ function grantFamilyFilterValue(grant: GrantRecord) {
 
 export function sortGrantDiscoveryResults(grants: GrantRecord[], sortBy: DiscoverySortFilter = "recommended") {
   return [...grants].sort((left, right) => {
+    // Open grants always come before closed/historical regardless of sort mode
+    const statusDelta = grantStatusRank(left) - grantStatusRank(right);
+    if (statusDelta !== 0) return statusDelta;
+
     if (sortBy === "funding") {
       const fundingDelta = grantFundingSortValue(right) - grantFundingSortValue(left);
       if (fundingDelta !== 0) return fundingDelta;
@@ -390,9 +394,6 @@ export function sortGrantDiscoveryResults(grants: GrantRecord[], sortBy: Discove
       const jurisdictionDelta = grantJurisdictionRank(left) - grantJurisdictionRank(right);
       if (jurisdictionDelta !== 0) return jurisdictionDelta;
     }
-
-    const statusDelta = grantStatusRank(left) - grantStatusRank(right);
-    if (statusDelta !== 0) return statusDelta;
 
     const recencyDelta = grantRecencyValue(right) - grantRecencyValue(left);
     if (recencyDelta !== 0) return recencyDelta;

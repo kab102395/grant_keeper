@@ -665,12 +665,6 @@ impl AppState {
             .filter(|value| !value.is_empty())
             .map(slug_source_name);
 
-        self.update_config(ConfigUpdate {
-            setup_complete: Some(false),
-            ..Default::default()
-        })
-        .await?;
-
         let (session, google_tokens) = self.authenticate_google_workspace_session_with_tokens().await?;
 
         let workspace_code = if let Some(code) = explicit_workspace_code {

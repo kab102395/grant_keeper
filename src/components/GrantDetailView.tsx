@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { GrantRecord } from "../lib/types";
 import {
@@ -13,9 +14,59 @@ import {
 import { draftSchemaSummary, resolveGrantDraftSchema } from "../lib/draftSchema";
 import { EmptyValue, GrantStatusPill, StatusPill } from "./ui";
 
-/** Returns the value if present, otherwise a quiet empty placeholder element. */
 function orEmpty(value: string | null | undefined, label = "Not provided"): ReactNode {
   return value && value.trim() ? value : <EmptyValue label={label} />;
+}
+
+function CollapsibleSection({
+  eyebrow,
+  defaultOpen = true,
+  children,
+  className,
+}: {
+  eyebrow: string;
+  defaultOpen?: boolean;
+  children: ReactNode;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <section className={`panel-block collapsible-section${className ? ` ${className}` : ""}${open ? "" : " collapsible-section-closed"}`}>
+      <button
+        type="button"
+        className="collapsible-header"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+      >
+        <p className="eyebrow">{eyebrow}</p>
+        <ChevronIcon open={open} />
+      </button>
+      {open && <div className="collapsible-body">{children}</div>}
+    </section>
+  );
+}
+
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      style={{
+        width: 14,
+        height: 14,
+        fill: "none",
+        stroke: "currentColor",
+        strokeWidth: 1.8,
+        strokeLinecap: "round",
+        strokeLinejoin: "round",
+        transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+        transition: "transform 200ms ease",
+        flexShrink: 0,
+      }}
+    >
+      <path d="M3 6l5 5 5-5" />
+    </svg>
+  );
 }
 
 export function GrantDetailView({
@@ -57,7 +108,7 @@ export function GrantDetailView({
   const estimatedAmount =
     grant.est_amounts ??
     (grant.est_amount_min != null || grant.est_amount_max != null
-      ? `${formatCurrency(grant.est_amount_min)} - ${formatCurrency(grant.est_amount_max)}`
+      ? `${formatCurrency(grant.est_amount_min) ?? "?"} – ${formatCurrency(grant.est_amount_max) ?? "?"}`
       : null);
   const deadlineText = grantDeadlineLabel(grant);
   const deadlineClass =
@@ -78,7 +129,7 @@ export function GrantDetailView({
           <p className="eyebrow">Grant detail</p>
           <h4>{grant.title}</h4>
           <p className="muted">
-            {grant.agency_dept ?? "Unknown agency"} - {grantSourceLabel(grant)}
+            {grant.agency_dept ?? "Unknown agency"} — {grantSourceLabel(grant)}
           </p>
         </div>
         <div className="detail-badge-stack">
@@ -123,8 +174,7 @@ export function GrantDetailView({
   );
 
   const overview = (
-    <section className="panel-block detail-section">
-      <p className="eyebrow">Grant summary</p>
+    <CollapsibleSection eyebrow="Grant summary" defaultOpen>
       <p className="detail-summary-copy">{orEmpty(summaryText, "No summary provided")}</p>
       <div className="detail-trail">
         <div>
@@ -149,12 +199,11 @@ export function GrantDetailView({
           ))}
         </div>
       ) : null}
-    </section>
+    </CollapsibleSection>
   );
 
   const draftSchemaPanel = (
-    <section className="panel-block detail-section">
-      <p className="eyebrow">Draft field profile</p>
+    <CollapsibleSection eyebrow="Draft field profile" defaultOpen>
       <div className="chip-row detail-chip-row">
         <span className="chip active">{draftSchema.schema_name}</span>
         {draftSchemaSummary(draftSchema).map((item) => (
@@ -167,12 +216,22 @@ export function GrantDetailView({
         This grant will render {draftSchema.section_count} writing sections before export. The LOI and matching-funds sections are
         included only when the source data requires them.
       </p>
-    </section>
+    </CollapsibleSection>
+  );
+
+  const eligibility = (
+    <CollapsibleSection eyebrow="Eligibility" defaultOpen>
+      <dl className="kv-list compact">
+        <Field label="Applicant types" value={grant.applicant_types.length ? grant.applicant_types.join(", ") : null} />
+        <Field label="Applicant notes" value={grant.applicant_type_notes} />
+        <Field label="Geography" value={grant.geography} />
+        <Field label="Organization UID" value={grant.organization_uid} />
+      </dl>
+    </CollapsibleSection>
   );
 
   const evidence = (
-    <section className="panel-block detail-section">
-      <p className="eyebrow">Source evidence</p>
+    <CollapsibleSection eyebrow="Source evidence" defaultOpen={false}>
       <div className="detail-narrative-grid">
         <article>
           <span className="muted">Source page title</span>
@@ -187,12 +246,11 @@ export function GrantDetailView({
           <p>{orEmpty(grant.source_excerpt)}</p>
         </article>
       </div>
-    </section>
+    </CollapsibleSection>
   );
 
   const narrative = (
-    <section className="panel-block detail-section">
-      <p className="eyebrow">Narrative</p>
+    <CollapsibleSection eyebrow="Narrative" defaultOpen={false}>
       <div className="detail-narrative-grid">
         <article>
           <span className="muted">Purpose</span>
@@ -207,24 +265,11 @@ export function GrantDetailView({
           <p>{orEmpty(grant.source_excerpt)}</p>
         </article>
       </div>
-    </section>
-  );
-
-  const eligibility = (
-    <section className="panel-block detail-section">
-      <p className="eyebrow">Eligibility</p>
-      <dl className="kv-list compact">
-        <Field label="Applicant types" value={grant.applicant_types.length ? grant.applicant_types.join(", ") : null} />
-        <Field label="Applicant notes" value={grant.applicant_type_notes} />
-        <Field label="Geography" value={grant.geography} />
-        <Field label="Organization UID" value={grant.organization_uid} />
-      </dl>
-    </section>
+    </CollapsibleSection>
   );
 
   const links = (
-    <section className="panel-block detail-section">
-      <p className="eyebrow">Links</p>
+    <CollapsibleSection eyebrow="Links & contact" defaultOpen={false}>
       <dl className="kv-list compact">
         <Field label="Grant URL" value={grant.grant_url} />
         <Field label="Agency URL" value={grant.agency_url} />
@@ -235,12 +280,11 @@ export function GrantDetailView({
         <Field label="Contact email" value={grant.contact_email} />
         <Field label="Contact phone" value={grant.contact_phone} />
       </dl>
-    </section>
+    </CollapsibleSection>
   );
 
   const actions = (
-    <section className="panel-block detail-rail-card detail-actions-card">
-      <p className="eyebrow">Actions</p>
+    <CollapsibleSection eyebrow="Actions" defaultOpen className="detail-rail-card detail-actions-card">
       <div className="detail-action-stack">
         <button
           type="button"
@@ -269,33 +313,39 @@ export function GrantDetailView({
       {!canWrite ? <p className="muted detail-action-note">{writeDisabledReason}</p> : null}
       {canWrite && aiSettingsRequired ? (
         <p className="muted detail-action-note">
-          AI mode is selected, but no Anthropic key is configured yet. Open organization settings to finish AI drafting setup.
+          AI mode is selected, but no Anthropic key is configured. Open org settings to finish AI setup.
         </p>
       ) : null}
-    </section>
+    </CollapsibleSection>
+  );
+
+  const keyFacts = (
+    <CollapsibleSection eyebrow="Key facts" defaultOpen className="detail-rail-card">
+      <dl className="kv-list compact">
+        <Field label="Source" value={grantSourceLabel(grant)} />
+        <Field label="Status" value={statusLabel} />
+        <Field label="Deadline" value={deadlineText} className={deadlineClass} />
+        <Field label="Funding" value={fundingAmount} />
+        <Field label="Estimated amount" value={estimatedAmount} />
+      </dl>
+    </CollapsibleSection>
+  );
+
+  const railEvidence = (
+    <CollapsibleSection eyebrow="Source evidence" defaultOpen={false} className="detail-rail-card">
+      <div className="detail-rail-evidence">
+        <p>{orEmpty(summaryText, "No summary provided")}</p>
+        <small>{orEmpty(grant.source_page_title)}</small>
+        <small>{orEmpty(grant.source_page_description)}</small>
+      </div>
+    </CollapsibleSection>
   );
 
   const rail = (
     <aside className="detail-rail">
       {actions}
-      <section className="panel-block detail-rail-card">
-        <p className="eyebrow">Key facts</p>
-        <dl className="kv-list compact">
-          <Field label="Source" value={grantSourceLabel(grant)} />
-          <Field label="Status" value={statusLabel} />
-          <Field label="Deadline" value={deadlineText} className={deadlineClass} />
-          <Field label="Funding" value={fundingAmount} />
-          <Field label="Estimated amount" value={estimatedAmount} />
-        </dl>
-      </section>
-      <section className="panel-block detail-rail-card">
-        <p className="eyebrow">Source evidence</p>
-        <div className="detail-rail-evidence">
-          <p>{orEmpty(summaryText, "No summary provided")}</p>
-          <small>{orEmpty(grant.source_page_title)}</small>
-          <small>{orEmpty(grant.source_page_description)}</small>
-        </div>
-      </section>
+      {keyFacts}
+      {railEvidence}
     </aside>
   );
 
@@ -307,9 +357,9 @@ export function GrantDetailView({
           <div className="detail-main">
             {overview}
             {draftSchemaPanel}
+            {eligibility}
             {evidence}
             {narrative}
-            {eligibility}
             {links}
           </div>
           {rail}
@@ -323,9 +373,9 @@ export function GrantDetailView({
       {hero}
       {overview}
       {draftSchemaPanel}
+      {eligibility}
       {evidence}
       {narrative}
-      {eligibility}
       {links}
       {actions}
     </div>

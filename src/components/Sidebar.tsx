@@ -37,6 +37,8 @@ export function Sidebar({
   onRefreshDatabase,
   onClearSession,
   canClearSession,
+  collapsed,
+  onToggleCollapse,
 }: {
   visibleSurface: Surface;
   setupLocked: boolean;
@@ -50,16 +52,21 @@ export function Sidebar({
   onRefreshDatabase: () => void;
   onClearSession: () => void;
   canClearSession: boolean;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }) {
   const visibleItems = setupLocked ? NAV_ITEMS.filter((surface) => surface.id === "setup") : NAV_ITEMS.filter((surface) => surface.id !== "dev" || showDev);
 
   return (
-    <aside className="sidebar">
+    <aside className={collapsed ? "sidebar sidebar-collapsed" : "sidebar"}>
       <div className="sidebar-brand">
         <span className="brand-mark">
           <GrantKeeperLogo size={28} tone="onDark" />
         </span>
-        <span className="brand-name">Grant Keeper</span>
+        {!collapsed && <span className="brand-name">Grant Keeper</span>}
+        <button type="button" className="sidebar-collapse-btn" onClick={onToggleCollapse} title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+          <CollapseIcon collapsed={collapsed} />
+        </button>
       </div>
 
       <nav className="sidebar-nav">
@@ -69,27 +76,45 @@ export function Sidebar({
             type="button"
             className={surface.id === visibleSurface ? "nav-item active" : "nav-item"}
             onClick={() => navigate(createWorkspaceLocation(surface.id))}
+            title={collapsed ? surface.label : undefined}
           >
             <surface.icon />
-            <span>{surface.label}</span>
+            {!collapsed && <span>{surface.label}</span>}
           </button>
         ))}
       </nav>
 
       <div className="sidebar-footer">
-        <button type="button" className="secondary" onClick={onRefreshDatabase} disabled={refreshing}>
-          {refreshing ? "Refreshing..." : "Refresh database"}
-        </button>
-        <button type="button" className="secondary" onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}>
-          {theme === "dark" ? "Light mode" : "Dark mode"}
-        </button>
-        <button type="button" className="ghost" onClick={onClearSession} disabled={!canClearSession}>
-          Clear session
-        </button>
-        <p className="sidebar-summary">
-          {summary.grants} grants · {summary.saved} saved · {summary.drafts} drafts
-        </p>
-        <p className="sidebar-session">{sessionEmail ?? "No active identity"}</p>
+        {!collapsed && (
+          <>
+            <button type="button" className="secondary" onClick={onRefreshDatabase} disabled={refreshing}>
+              {refreshing ? "Refreshing..." : "Refresh database"}
+            </button>
+            <button type="button" className="secondary" onClick={() => setTheme((current) => (current === "dark" ? "light" : "dark"))}>
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
+            <button type="button" className="ghost" onClick={onClearSession} disabled={!canClearSession}>
+              Sign out
+            </button>
+            <p className="sidebar-summary">
+              {summary.grants} grants · {summary.saved} saved · {summary.drafts} drafts
+            </p>
+            <p className="sidebar-session">{sessionEmail ?? "No active identity"}</p>
+          </>
+        )}
+        {collapsed && (
+          <>
+            <button type="button" className="nav-item" onClick={onRefreshDatabase} disabled={refreshing} title="Refresh database">
+              <RefreshIcon />
+            </button>
+            <button type="button" className="nav-item" onClick={() => setTheme((c) => (c === "dark" ? "light" : "dark"))} title={theme === "dark" ? "Light mode" : "Dark mode"}>
+              <ThemeIcon dark={theme === "dark"} />
+            </button>
+            <button type="button" className="nav-item" onClick={onClearSession} disabled={!canClearSession} title="Sign out">
+              <SignOutIcon />
+            </button>
+          </>
+        )}
       </div>
     </aside>
   );
@@ -149,6 +174,43 @@ function TerminalIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
       <path d="M2 3h12v10H2zM4.25 6l2 2-2 2M7.5 10h4.25" />
+    </svg>
+  );
+}
+
+function CollapseIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" style={{ transform: collapsed ? "rotate(180deg)" : "none", transition: "transform 240ms ease" }}>
+      <path d="M10 3L6 8l4 5" />
+    </svg>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M13 8A5 5 0 1 1 8 3h3M11 1v4H7" />
+    </svg>
+  );
+}
+
+function ThemeIcon({ dark }: { dark: boolean }) {
+  return dark ? (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="3.5" />
+      <path d="M8 1.5v1M8 13.5v1M1.5 8h1M13.5 8h1M3.6 3.6l.7.7M11.7 11.7l.7.7M11.7 3.6l-.7.7M4.3 11.7l-.7.7" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M11 8.5A4.5 4.5 0 0 1 5.5 4a4.5 4.5 0 1 0 5.5 4.5z" />
+    </svg>
+  );
+}
+
+function SignOutIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6 2.5H3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3M10.5 11l3-3-3-3M13.5 8H6" />
     </svg>
   );
 }

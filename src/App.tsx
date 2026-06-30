@@ -8,6 +8,7 @@ import { DevToolsPage } from "./pages/DevToolsPage";
 import { FirstRunPrompt } from "./components/FirstRunPrompt";
 import { OrganizationPage } from "./pages/OrganizationPage";
 import { Sidebar } from "./components/Sidebar";
+import { HelpDrawer } from "./components/HelpDrawer";
 import { EmberLogo } from "./components/EmberLogo";
 import { AccountMenu } from "./components/AccountMenu";
 import { SetupPage } from "./pages/SetupPage";
@@ -19,44 +20,73 @@ import { useWorkspaceData } from "./hooks/useWorkspaceData";
 
 function PageHeader({
   title,
-  breadcrumb,
+  onBack,
+  canGoBack,
+  onForward,
+  canGoForward,
   children,
 }: {
   title: string;
-  breadcrumb?: string | null;
+  onBack: () => void;
+  canGoBack: boolean;
+  onForward: () => void;
+  canGoForward: boolean;
   children?: ReactNode;
 }) {
   return (
     <div className="page-header">
-      <div className="page-header-copy">
-        {breadcrumb ? <p className="page-breadcrumb">{breadcrumb}</p> : null}
-        <h1>{title}</h1>
+      <div className="page-header-left">
+        <div className="page-nav-btns">
+          <button
+            type="button"
+            className="page-nav-btn"
+            onClick={onBack}
+            disabled={!canGoBack}
+            title="Go back"
+            aria-label="Go back"
+          >
+            <NavBackIcon />
+          </button>
+          <button
+            type="button"
+            className="page-nav-btn"
+            onClick={onForward}
+            disabled={!canGoForward}
+            title="Go forward"
+            aria-label="Go forward"
+          >
+            <NavForwardIcon />
+          </button>
+        </div>
+        <h1 className="page-header-title">{title}</h1>
       </div>
       {children ? <div className="page-header-actions">{children}</div> : null}
     </div>
   );
 }
 
-function startupStateLabel(state: string | undefined) {
-  switch (state) {
-    case "dev_profile_ready":
-      return "Dev profile ready";
-    case "ready":
-      return "Workspace ready";
-    case "needs_login":
-      return "Needs login";
-    case "needs_membership":
-      return "Needs membership";
-    case "needs_workspace":
-      return "Needs workspace";
-    default:
-      return "Needs setup";
-  }
+function NavBackIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" style={{ width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
+      <path d="M10 3L5 8l5 5" />
+    </svg>
+  );
 }
+
+function NavForwardIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" style={{ width: 14, height: 14, fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" }}>
+      <path d="M6 3l5 5-5 5" />
+    </svg>
+  );
+}
+
 
 export default function App() {
   const [startupState, setStartupState] = useState<StartupState>("needs_workspace");
   const [isDevSession, setIsDevSession] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(() => {
     if (typeof window === "undefined") {
       return "light";
@@ -101,7 +131,6 @@ export default function App() {
   );
 
   const pageTitle = navState.visible.surface === "grant" ? "Grant detail" : surfaceTitle(navState.visible.surface);
-  const pageBreadcrumb = "Current surface";
   const firstRunStorageKey = useMemo(() => {
     const orgKey = data.snapshot?.organization_uid ?? data.snapshot?.current_org_uid ?? data.config?.organization_uid ?? "workspace";
     return `grant-keeper-first-run-dismissed:${orgKey}`;
@@ -170,6 +199,10 @@ export default function App() {
     }
   }, [data.snapshot, navState]);
 
+  useEffect(() => {
+    document.documentElement.style.setProperty("--sidebar-width", sidebarCollapsed ? "56px" : "220px");
+  }, [sidebarCollapsed]);
+
   const body = data.loading ? (
     <div className="loading-panel">
       <div className="spinner" />
@@ -180,7 +213,7 @@ export default function App() {
       <Sidebar
         visibleSurface={navState.visible.surface}
         setupLocked={!setupComplete}
-        showDev={isDevSession}
+        showDev={isDevSession && data.snapshot?.session.mode !== "firebase"}
         navigate={navState.navigate}
         summary={summary}
         sessionEmail={data.snapshot?.session.email ?? null}
@@ -190,25 +223,19 @@ export default function App() {
         onRefreshDatabase={() => void data.refreshCurrentSurface()}
         onClearSession={() => void data.clearSessionAndReload()}
         canClearSession={Boolean(data.snapshot?.session.signed_in)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
       />
 
       <section className="main-pane">
-        <PageHeader breadcrumb={pageBreadcrumb} title={pageTitle}>
+        <PageHeader
+          title={pageTitle}
+          onBack={navState.goBack}
+          canGoBack={navState.canGoBack}
+          onForward={navState.goForward}
+          canGoForward={navState.canGoForward}
+        >
           <>
-            <button type="button" className="secondary" onClick={navState.goBack} disabled={!navState.canGoBack}>
-              Back
-            </button>
-            <button type="button" className="secondary" onClick={navState.goForward} disabled={!navState.canGoForward}>
-              Forward
-            </button>
-            <button type="button" className="primary" onClick={() => void data.refreshCurrentSurface()} disabled={data.refreshing}>
-              {data.refreshing ? "Refreshing..." : "Refresh database"}
-            </button>
-            <button type="button" className="secondary" onClick={() => void data.refreshLiveFeeds()} disabled={data.refreshing}>
-              Sync live sources
-            </button>
-            <span className="status-pill">{setupComplete ? "Setup complete" : "Setup required"}</span>
-            <span className="status-pill">{startupStateLabel(startupState)}</span>
             {data.snapshot?.session.signed_in ? (
               <AccountMenu
                 email={data.snapshot?.session.email ?? null}
@@ -217,6 +244,15 @@ export default function App() {
                 onSignOut={() => void data.clearSessionAndReload()}
               />
             ) : null}
+            <button
+              type="button"
+              className="help-trigger-btn"
+              onClick={() => setHelpOpen((o) => !o)}
+              aria-label="Open help"
+              title="Help"
+            >
+              ?
+            </button>
           </>
         </PageHeader>
 
@@ -239,7 +275,7 @@ export default function App() {
           </div>
         ) : null}
 
-        <div className="page-body">
+        <div className={navState.visible.surface === "drafts" ? "page-body page-body-flush" : "page-body"}>
           {navState.visible.surface === "grant" ? (
             <GrantDetailPage
               grant={data.selectedGrant}
@@ -295,6 +331,7 @@ export default function App() {
               syncReport={data.syncReport}
               onRefreshDatabase={data.refreshCurrentSurface}
               onRefreshLiveFeeds={data.refreshLiveFeeds}
+              isDevSession={isDevSession}
               grantCount={summary.grants}
               watchlistCount={summary.saved}
                 draftCount={summary.drafts}
@@ -406,6 +443,12 @@ export default function App() {
           <span>© {new Date().getFullYear()} Ember Tech Solutions LLC. All rights reserved.</span>
         </footer>
       </section>
+
+      <HelpDrawer
+        open={helpOpen}
+        surface={navState.visible.surface}
+        onClose={() => setHelpOpen(false)}
+      />
     </>
   );
 

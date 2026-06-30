@@ -23,6 +23,7 @@ import {
 } from "../lib/shell";
 import { EmptyValue, GrantStatusPill, MetaItem, SparseTag } from "../components/ui";
 import { BuildingIcon, CalendarIcon, CashIcon, MapPinIcon, StarIcon } from "../components/icons";
+import { FieldTip } from "../components/FieldTip";
 
 export function GrantDiscoveryPage({
   grants,
@@ -139,7 +140,10 @@ export function GrantDiscoveryPage({
           </label>
 
           <label>
-            Jurisdiction
+            <span className="label-with-tip">
+              Jurisdiction
+              <FieldTip tip="Filter by where the grant money can be used. California only shows grants from CA state agencies or requiring CA-based organizations. Other jurisdictions shows federal and non-CA grants." />
+            </span>
             <select
               value={discoveryFilters.jurisdiction}
               onChange={(event) =>
@@ -156,7 +160,10 @@ export function GrantDiscoveryPage({
           </label>
 
           <label>
-            Sort by
+            <span className="label-with-tip">
+              Sort by
+              <FieldTip tip="Recommended sorts by deadline proximity and funding amount combined. Highest funding puts the largest grants first regardless of deadline." />
+            </span>
             <select
               value={discoveryFilters.sortBy}
               onChange={(event) =>
@@ -176,7 +183,10 @@ export function GrantDiscoveryPage({
 
         <div className="discovery-toolbar-grid discovery-toolbar-grid-secondary">
           <label>
-            Source type
+            <span className="label-with-tip">
+              Source type
+              <FieldTip tip="The technical format the grant data was ingested from. CSV and JSON are structured data feeds; Webpage means it was scraped from a grants portal. All sources includes everything." />
+            </span>
             <select
               value={discoveryFilters.sourceKind}
               onChange={(event) =>
@@ -194,7 +204,10 @@ export function GrantDiscoveryPage({
           </label>
 
           <label>
-            Source family
+            <span className="label-with-tip">
+              Source family
+              <FieldTip tip="Filter by which agency or grant database the opportunity came from. For example, California Grants Portal shows only grants aggregated by that state portal." />
+            </span>
             <select
               value={discoveryFilters.sourceFamily}
               onChange={(event) =>
@@ -224,7 +237,10 @@ export function GrantDiscoveryPage({
           </label>
 
           <label>
-            Deadline window
+            <span className="label-with-tip">
+              Deadline window
+              <FieldTip tip="Show only grants whose application deadline falls within a set number of days from today. Useful for prioritizing what needs attention now." />
+            </span>
             <select
               value={discoveryFilters.deadlineWindow}
               onChange={(event) =>
@@ -247,7 +263,10 @@ export function GrantDiscoveryPage({
               checked={discoveryFilters.onlyWatchlisted}
               onChange={(event) => setDiscoveryFilters((current) => ({ ...current, onlyWatchlisted: event.target.checked }))}
             />
-            Watchlist only
+            <span className="label-with-tip">
+              Watchlist only
+              <FieldTip tip="When on, hides all grants except the ones you have bookmarked. Useful for quickly reviewing what you have saved without leaving Discovery." />
+            </span>
           </label>
         </div>
 
