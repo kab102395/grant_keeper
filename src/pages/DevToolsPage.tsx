@@ -107,7 +107,7 @@ export function DevToolsPage({
         </article>
         <article className="stat-card">
           <span>Last checked</span>
-          <strong>{lastCheckedAt ? formatTimestamp(lastCheckedAt) : "not set"}</strong>
+          <strong>{lastCheckedAt ? formatTimestamp(lastCheckedAt) : "—"}</strong>
           <p>Database snapshot timestamp</p>
         </article>
         <article className="stat-card">
@@ -117,7 +117,7 @@ export function DevToolsPage({
         </article>
         <article className="stat-card">
           <span>Live sync</span>
-          <strong>{lastSyncAt ? formatTimestamp(lastSyncAt) : "not set"}</strong>
+          <strong>{lastSyncAt ? formatTimestamp(lastSyncAt) : "—"}</strong>
           <p>Last explicit source sync</p>
         </article>
         <article className="stat-card">
@@ -183,8 +183,8 @@ export function DevToolsPage({
         ) : null}
         {sourceHealth.length ? (
           <div className="info-row">
-            <span>Database snapshot: {lastCheckedAt ? formatTimestamp(lastCheckedAt) : "not set"}</span>
-            <span>Live sync: {lastSyncAt ? formatTimestamp(lastSyncAt) : "not set"}</span>
+            <span>Database snapshot: {lastCheckedAt ? formatTimestamp(lastCheckedAt) : "—"}</span>
+            <span>Live sync: {lastSyncAt ? formatTimestamp(lastSyncAt) : "—"}</span>
             <span>{healthyCount} healthy</span>
             <span>{badCount} bad source</span>
             <span>{staleCount} stale</span>
@@ -218,7 +218,7 @@ export function DevToolsPage({
               <small>Enabled: {source.enabled ? "yes" : "no"}</small>
               <small>Grants linked: {source.grant_count}</small>
               <small>Last run: {formatTimestamp(source.last_run_at)}</small>
-              <small>Status: {source.last_status ?? "not set"}</small>
+              <small>Status: {source.last_status ?? "—"}</small>
               {source.health_note ? <small>{source.health_note}</small> : null}
               {source.last_error ? <small className="error-text">{source.last_error}</small> : null}
               <small>Health: {sourceHealthLabel(source.health_status)}</small>

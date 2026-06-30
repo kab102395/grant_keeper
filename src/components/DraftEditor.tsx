@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { DraftRecord, GrantRecord } from "../lib/types";
 import { formatCurrency, formatTimestamp, grantStatusLabel } from "../lib/shell";
 import { useAutosave } from "../hooks/useAutosave";
+import { EmptyValue, GrantStatusPill } from "./ui";
 import { GrantContextBanner } from "./GrantContextBanner";
 import {
   composeGrantAwareDraftBody,
@@ -158,15 +159,15 @@ export function DraftEditor({
           <dl className="kv-list compact">
             <div>
               <dt>Grant Portal ID</dt>
-              <dd>{currentDraft.grant_portal_id || "not set"}</dd>
+              <dd>{currentDraft.grant_portal_id || <EmptyValue />}</dd>
             </div>
             <div>
               <dt>Origin org UID</dt>
-              <dd>{currentDraft.provenance_org_uid ?? "not set"}</dd>
+              <dd>{currentDraft.provenance_org_uid || <EmptyValue />}</dd>
             </div>
             <div>
               <dt>Scaffold template</dt>
-              <dd>{currentDraft.scaffold_template_version ?? "not set"}</dd>
+              <dd>{currentDraft.scaffold_template_version || <EmptyValue />}</dd>
             </div>
           </dl>
         </div>
@@ -192,7 +193,7 @@ export function DraftEditor({
             <p className="eyebrow">Grant reference</p>
           <h4>{grant?.title ?? "Linked grant not loaded"}</h4>
           </div>
-          {grant ? <span className="status-pill">{grantStatusLabel(grant)}</span> : null}
+          {grant ? <GrantStatusPill grant={grant} /> : null}
         </div>
         {grant ? (
           <div className="draft-reference-stack">
@@ -204,7 +205,7 @@ export function DraftEditor({
                 </div>
                 <div>
                   <span className="eyebrow">Deadline</span>
-                  <strong>{grant.deadline_is_ongoing ? "Ongoing" : grant.application_deadline ?? "Not set"}</strong>
+                  <strong>{grant.deadline_is_ongoing ? "Ongoing" : grant.application_deadline ?? <EmptyValue label="No deadline" />}</strong>
                 </div>
                 <div>
                   <span className="eyebrow">Status</span>
@@ -221,15 +222,15 @@ export function DraftEditor({
               <Field label="Description" value={grant.description} />
               <Field label="Source" value={grant.source_name ?? grant.source_id} />
               <Field label="Funding" value={grant.est_amounts ?? grant.est_avail_funds ?? formatCurrency(grant.est_avail_funds_numeric)} />
-              <Field label="Categories" value={grant.categories.length ? grant.categories.join(", ") : "not set"} />
+              <Field label="Categories" value={grant.categories.length ? grant.categories.join(", ") : null} />
               <Field label="Contact" value={grant.contact_name} />
               <Field label="Contact email" value={grant.contact_email} />
               <Field label="Contact phone" value={grant.contact_phone} />
             </div>
             <div className="info-row">
               <span>Portal ID: {grant.portal_id}</span>
-              <span>Org UID: {grant.organization_uid ?? "not set"}</span>
-              <span>Source evidence: {grant.source_excerpt ?? grant.source_page_description ?? "not set"}</span>
+              <span>Org UID: {grant.organization_uid ?? "—"}</span>
+              <span>Source evidence: {grant.source_excerpt ?? grant.source_page_description ?? "—"}</span>
             </div>
             {grant.source_highlights.length ? (
               <div className="chip-row detail-chip-row">
@@ -283,10 +284,11 @@ export function DraftEditor({
 }
 
 function Field({ label, value }: { label: string; value: string | null | undefined }) {
+  const isEmpty = value == null || value.trim() === "";
   return (
     <div>
       <dt>{label}</dt>
-      <dd>{value ?? "not set"}</dd>
+      <dd>{isEmpty ? <EmptyValue /> : value}</dd>
     </div>
   );
 }

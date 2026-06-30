@@ -154,7 +154,7 @@ export function DraftsPage({
                     {formatTimestamp(draft.updated_at)} | {draftGenerationLabel(draft.generation_mode)}
                   </span>
                   <span className="draft-list-note">{draft.provenance_note ?? draft.notes ?? "No notes"}</span>
-                  <span className="draft-list-link">Grant Portal ID: {draft.grant_portal_id || "not set"}</span>
+                  <span className="draft-list-link">Grant Portal ID: {draft.grant_portal_id || "—"}</span>
                 </button>
               ))
             )}

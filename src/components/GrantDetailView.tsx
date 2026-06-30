@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { GrantRecord } from "../lib/types";
 import {
   deadlineUrgency,
@@ -10,6 +11,12 @@ import {
   grantStatusLabel,
 } from "../lib/shell";
 import { draftSchemaSummary, resolveGrantDraftSchema } from "../lib/draftSchema";
+import { EmptyValue, GrantStatusPill, StatusPill } from "./ui";
+
+/** Returns the value if present, otherwise a quiet empty placeholder element. */
+function orEmpty(value: string | null | undefined, label = "Not provided"): ReactNode {
+  return value && value.trim() ? value : <EmptyValue label={label} />;
+}
 
 export function GrantDetailView({
   grant,
@@ -43,7 +50,7 @@ export function GrantDetailView({
 
   const statusLabel = grantStatusLabel(grant);
   const deadlineState = deadlineUrgency(grant);
-  const summaryText = grant.source_excerpt ?? grant.description ?? grant.purpose ?? "not set";
+  const summaryText = grant.source_excerpt ?? grant.description ?? grant.purpose ?? null;
   const sourceSummary = grant.source_page_description ?? grant.source_page_title ?? grantSourceLabel(grant);
   const sourceHighlights = grant.source_highlights ?? [];
   const fundingAmount = grantFundingLabel(grant);
@@ -51,7 +58,7 @@ export function GrantDetailView({
     grant.est_amounts ??
     (grant.est_amount_min != null || grant.est_amount_max != null
       ? `${formatCurrency(grant.est_amount_min)} - ${formatCurrency(grant.est_amount_max)}`
-      : "not set");
+      : null);
   const deadlineText = grantDeadlineLabel(grant);
   const deadlineClass =
     deadlineState === "urgent"
@@ -75,8 +82,8 @@ export function GrantDetailView({
           </p>
         </div>
         <div className="detail-badge-stack">
-          <span className="status-pill">{statusLabel}</span>
-          <span className={`status-pill ${deadlineState}`}>{deadlineText}</span>
+          <GrantStatusPill grant={grant} />
+          <StatusPill tone="neutral">{deadlineText}</StatusPill>
           {grant.loi_required ? <span className="chip active">LOI required</span> : <span className="chip">No LOI</span>}
         </div>
       </div>
@@ -118,7 +125,7 @@ export function GrantDetailView({
   const overview = (
     <section className="panel-block detail-section">
       <p className="eyebrow">Grant summary</p>
-      <p className="detail-summary-copy">{summaryText}</p>
+      <p className="detail-summary-copy">{orEmpty(summaryText, "No summary provided")}</p>
       <div className="detail-trail">
         <div>
           <span className="muted">Source page</span>
@@ -126,11 +133,11 @@ export function GrantDetailView({
         </div>
         <div>
           <span className="muted">Last updated source</span>
-          <strong>{grant.last_updated_source ?? "not set"}</strong>
+          <strong>{orEmpty(grant.last_updated_source)}</strong>
         </div>
         <div>
           <span className="muted">Change notes</span>
-          <strong>{grant.change_notes ?? "not set"}</strong>
+          <strong>{orEmpty(grant.change_notes)}</strong>
         </div>
       </div>
       {sourceHighlights.length ? (
@@ -169,15 +176,15 @@ export function GrantDetailView({
       <div className="detail-narrative-grid">
         <article>
           <span className="muted">Source page title</span>
-          <p>{grant.source_page_title ?? "not set"}</p>
+          <p>{orEmpty(grant.source_page_title)}</p>
         </article>
         <article>
           <span className="muted">Source page description</span>
-          <p>{grant.source_page_description ?? "not set"}</p>
+          <p>{orEmpty(grant.source_page_description)}</p>
         </article>
         <article>
           <span className="muted">Source excerpt</span>
-          <p>{grant.source_excerpt ?? "not set"}</p>
+          <p>{orEmpty(grant.source_excerpt)}</p>
         </article>
       </div>
     </section>
@@ -189,15 +196,15 @@ export function GrantDetailView({
       <div className="detail-narrative-grid">
         <article>
           <span className="muted">Purpose</span>
-          <p>{grant.purpose ?? "not set"}</p>
+          <p>{orEmpty(grant.purpose)}</p>
         </article>
         <article>
           <span className="muted">Description</span>
-          <p>{grant.description ?? "not set"}</p>
+          <p>{orEmpty(grant.description)}</p>
         </article>
         <article>
           <span className="muted">Source excerpt</span>
-          <p>{grant.source_excerpt ?? "not set"}</p>
+          <p>{orEmpty(grant.source_excerpt)}</p>
         </article>
       </div>
     </section>
@@ -284,9 +291,9 @@ export function GrantDetailView({
       <section className="panel-block detail-rail-card">
         <p className="eyebrow">Source evidence</p>
         <div className="detail-rail-evidence">
-          <p>{summaryText}</p>
-          <small>{grant.source_page_title ?? "not set"}</small>
-          <small>{grant.source_page_description ?? "not set"}</small>
+          <p>{orEmpty(summaryText, "No summary provided")}</p>
+          <small>{orEmpty(grant.source_page_title)}</small>
+          <small>{orEmpty(grant.source_page_description)}</small>
         </div>
       </section>
     </aside>
@@ -334,10 +341,11 @@ function Field({
   value: string | null | undefined;
   className?: string;
 }) {
+  const isEmpty = value == null || value.trim() === "";
   return (
     <div>
       <dt>{label}</dt>
-      <dd className={className}>{value ?? "not set"}</dd>
+      <dd className={className}>{isEmpty ? <EmptyValue /> : value}</dd>
     </div>
   );
 }

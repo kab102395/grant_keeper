@@ -72,7 +72,7 @@ export function DashboardPage({
         </div>
 
         <div className="info-row">
-          <span>Workspace UID: {snapshot?.current_org_uid ?? "not set"}</span>
+          <span>Workspace UID: {snapshot?.current_org_uid ?? "—"}</span>
           <span>{snapshot?.session.signed_in ? sessionModeLabel(snapshot.session.mode) : "No active session"}</span>
           <span>Draft mode: {config?.draft_generation_preference === "ai" ? "AI available" : "Scaffold first"}</span>
           <span>{config?.last_sync_at ? `Catalog synced ${formatTimestamp(config.last_sync_at)}` : "Catalog sync not recorded"}</span>
@@ -153,7 +153,7 @@ export function DashboardPage({
 
         <div className="info-row">
           <span>{selectedGrant ? `Grant: ${selectedGrant.title}` : "No grant selected"}</span>
-          <span>{selectedGrant ? `Source: ${selectedGrant.source_name ?? selectedGrant.source_id ?? "not set"}` : "Open discovery to pick a grant"}</span>
+          <span>{selectedGrant ? `Source: ${selectedGrant.source_name ?? selectedGrant.source_id ?? "—"}` : "Open discovery to pick a grant"}</span>
           <span>{selectedDraft ? `Draft: ${selectedDraft.title ?? selectedDraft.draft_id}` : "No draft selected"}</span>
           <span>{selectedDraft ? `Mode: ${selectedDraft.generation_mode}` : "Open drafts to continue editing"}</span>
         </div>
@@ -203,7 +203,7 @@ export function DashboardPage({
             <h4>{selectedDraft?.title ?? "Nothing selected"}</h4>
             <p className="muted">
               {selectedDraft
-                ? `Grant Portal ID: ${selectedDraft.grant_portal_id || "not set"}`
+                ? `Grant Portal ID: ${selectedDraft.grant_portal_id || "—"}`
                 : "Open drafts to continue editing the last working draft."}
             </p>
             <div className="surface-actions">

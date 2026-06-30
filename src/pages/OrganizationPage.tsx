@@ -200,7 +200,7 @@ export function OrganizationPage({
 
           <div className="org-uid-card">
             <span className="eyebrow">Workspace UID</span>
-            <p className="field-value">{orgUid ?? "not set"}</p>
+            <p className="field-value">{orgUid ?? "—"}</p>
           </div>
 
           <div className="org-missing-section">
@@ -516,11 +516,11 @@ export function OrganizationPage({
                 <dl className="kv-list compact">
                   <div>
                     <dt>Name</dt>
-                    <dd>{organization.name ?? "not set"}</dd>
+                    <dd>{organization.name ?? "—"}</dd>
                   </div>
                   <div>
                     <dt>Mission</dt>
-                    <dd>{organization.mission ?? "not set"}</dd>
+                    <dd>{organization.mission ?? "—"}</dd>
                   </div>
                   <div>
                     <dt>Programs</dt>
@@ -528,7 +528,7 @@ export function OrganizationPage({
                   </div>
                   <div>
                     <dt>Updated</dt>
-                    <dd>{organization.updated_at ? formatTimestamp(organization.updated_at) : "not set"}</dd>
+                    <dd>{organization.updated_at ? formatTimestamp(organization.updated_at) : "—"}</dd>
                   </div>
                 </dl>
               ) : (
@@ -541,19 +541,19 @@ export function OrganizationPage({
               <dl className="kv-list compact">
                 <div>
                   <dt>Contact</dt>
-                  <dd>{profile?.contact_name ?? "not set"}</dd>
+                  <dd>{profile?.contact_name ?? "—"}</dd>
                 </div>
                 <div>
                   <dt>Email</dt>
-                  <dd>{profile?.contact_email ?? "not set"}</dd>
+                  <dd>{profile?.contact_email ?? "—"}</dd>
                 </div>
                 <div>
                   <dt>Service area</dt>
-                  <dd>{profile?.service_area ?? "not set"}</dd>
+                  <dd>{profile?.service_area ?? "—"}</dd>
                 </div>
                 <div>
                   <dt>Target population</dt>
-                  <dd>{profile?.target_population ?? "not set"}</dd>
+                  <dd>{profile?.target_population ?? "—"}</dd>
                 </div>
               </dl>
             </div>
